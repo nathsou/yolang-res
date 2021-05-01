@@ -56,4 +56,4 @@ let run = input => {
   })
 }
 
-Js.log(run("3 * 7 + 1 >= 22"))
+Js.log(run("(if (3 * (7 + 1) >= 22) { 1 } else { 2 }) + 4"))

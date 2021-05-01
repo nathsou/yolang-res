@@ -37,6 +37,16 @@ let rec compileExpr = (expr: Core.t): array<Wasm.Inst.t> => {
       Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.GeI32Unsigned]])
     | _ => Js.Exn.raiseError(`compileExpr: binop '${Token.BinOp.show(op)}' not handled`)
     }
+  | CoreBlockExpr(_, exprs) => Array.concatMany(exprs->Array.map(compileExpr))
+  | CoreIfExpr(_, cond, thenE, elseE) =>
+    Array.concatMany([
+      compileExpr(cond),
+      [Wasm.Inst.If(Wasm.BlockReturnType.I32)],
+      compileExpr(thenE),
+      [Wasm.Inst.Else],
+      compileExpr(elseE),
+      [Wasm.Inst.End],
+    ])
   | _ => Js.Exn.raiseError(`compileExpr: '${Core.show(expr)}' not handled`)
   }
 }

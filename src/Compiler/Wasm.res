@@ -131,13 +131,33 @@ module ValueType = {
     }
 }
 
+module BlockReturnType = {
+  type t = I32 | I64 | F32 | F64 | Void
+
+  let encode = (v: t): byte =>
+    switch v {
+    | I32 => 0x7f
+    | I64 => 0x7e
+    | F32 => 0x7d
+    | F64 => 0x7c
+    | Void => 0x40
+    }
+}
+
 module Inst = {
   type t =
     | ConstI32(int)
     | ConstI64(int)
     | ConstF32(float)
     | ConstF64(float)
+    | If(BlockReturnType.t)
+    | BranchIf(int)
+    | Branch(int)
+    | Block(BlockReturnType.t)
+    | Loop(BlockReturnType.t)
+    | Else
     | End
+    | Return
     | GetLocal(int)
     | SetLocal(int)
     | AddI32
@@ -185,7 +205,14 @@ module Inst = {
     | ConstI64(_) => 0x42
     | ConstF32(_) => 0x43
     | ConstF64(_) => 0x44
+    | If(_) => 0x04
+    | BranchIf(_) => 0x0d
+    | Branch(_) => 0x0c
+    | Block(_) => 0x02
+    | Loop(_) => 0x03
+    | Else => 0x05
     | End => 0x0b
+    | Return => 0x0f
     | GetLocal(_) => 0x20
     | SetLocal(_) => 0x21
     | AddI32 => 0x6a
@@ -236,6 +263,9 @@ module Inst = {
     | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
     | GetLocal(n) => Array.concat([inst->opcode], uleb128(n))
     | SetLocal(n) => Array.concat([inst->opcode], uleb128(n))
+    | If(bt) => [inst->opcode, bt->BlockReturnType.encode]
+    | BranchIf(depth) => Array.concat([inst->opcode], uleb128(depth))
+    | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
     | _ => [inst->opcode]
     }
 }

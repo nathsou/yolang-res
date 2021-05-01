@@ -17,8 +17,8 @@ module Env = {
   let get = (env: t, x): option<polyTy> => env->get(x)
 }
 
-let int32Ty = TyConst("i32", [])
-let int64Ty = TyConst("i64", [])
+let u32Ty = TyConst("u32", [])
+let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])
 

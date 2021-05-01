@@ -6,28 +6,28 @@ open Unification
 
 let constTy = (c: Expr.Const.t): polyTy => {
   let ty = switch c {
-  | Expr.Const.IntConst(_) => int32Ty
+  | Expr.Const.IntConst(_) => u32Ty
   | Expr.Const.BoolConst(_) => boolTy
   | Expr.Const.UnitConst => unitTy
   }
 
-  ([], ty)
+  polyOf(ty)
 }
 
 let binOpTy = (op: Token.BinOp.t): polyTy => {
   open Token.BinOp
   switch op {
-  | Plus => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Sub => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Mult => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Div => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Mod => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Plus => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
+  | Sub => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
+  | Mult => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
+  | Div => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
+  | Mod => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
   | Eq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
   | Neq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Lss => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Leq => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Gtr => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
-  | Geq => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Lss => polyOf(funTy([u32Ty, u32Ty, boolTy]))
+  | Leq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
+  | Gtr => polyOf(funTy([u32Ty, u32Ty, boolTy]))
+  | Geq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
   }
 }
 
