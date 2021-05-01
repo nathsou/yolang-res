@@ -1,0 +1,17 @@
+{
+  "name": "gost",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "rescript build",
+    "clean": "rescript clean",
+    "start": "rescript build -w"
+  },
+  "keywords": [
+    "rescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "rescript": "^9.1.2"
+  }
+}
