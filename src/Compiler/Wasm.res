@@ -145,6 +145,39 @@ module Inst = {
     | MulI32
     | DivI32Unsigned
     | DivI32Signed
+    | EqzI32
+    | EqI32
+    | EqI64
+    | EqF32
+    | EqF64
+    | NeI32
+    | NeI64
+    | NeF32
+    | NeF64
+    | LeI32Signed
+    | LeI32Unsigned
+    | LeI64Signed
+    | LeI64Unsigned
+    | LeF32
+    | LeF64
+    | GeI32Signed
+    | GeI32Unsigned
+    | GeI64Signed
+    | GeI64Unsigned
+    | GeF32
+    | GeF64
+    | LtI32Signed
+    | LtI32Unsigned
+    | LtI64Signed
+    | LtI64Unsigned
+    | LtF32
+    | LtF64
+    | GtI32Signed
+    | GtI32Unsigned
+    | GtI64Signed
+    | GtI64Unsigned
+    | GtF32
+    | GtF64
 
   let opcode = inst =>
     switch inst {
@@ -160,6 +193,39 @@ module Inst = {
     | MulI32 => 0x6c
     | DivI32Signed => 0x6d
     | DivI32Unsigned => 0x6e
+    | EqzI32 => 0x45
+    | EqI32 => 0x46
+    | EqI64 => 0x51
+    | EqF32 => 0x5b
+    | EqF64 => 0x61
+    | NeI32 => 0x47
+    | NeI64 => 0x52
+    | NeF32 => 0x5c
+    | NeF64 => 0x62
+    | LeI32Signed => 0x4c
+    | LeI32Unsigned => 0x4d
+    | LeI64Signed => 0x57
+    | LeI64Unsigned => 0x58
+    | LeF32 => 0x5f
+    | LeF64 => 0x65
+    | GeI32Signed => 0x4e
+    | GeI32Unsigned => 0x4f
+    | GeI64Signed => 0x59
+    | GeI64Unsigned => 0x5a
+    | GeF32 => 0x60
+    | GeF64 => 0x66
+    | LtI32Signed => 0x48
+    | LtI32Unsigned => 0x49
+    | LtI64Signed => 0x53
+    | LtI64Unsigned => 0x54
+    | LtF32 => 0x5d
+    | LtF64 => 0x63
+    | GtI32Signed => 0x4a
+    | GtI32Unsigned => 0x4b
+    | GtI64Signed => 0x55
+    | GtI64Unsigned => 0x56
+    | GtF32 => 0x5e
+    | GtF64 => 0x64
     }
 
   let encode = inst =>

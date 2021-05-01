@@ -31,6 +31,7 @@ let symbol = anyOf([
   char(',')->map(_ => Symbol(Comma)),
   char(';')->map(_ => Symbol(SemiColon)),
   string("==")->map(_ => BinaryOp(Eq)),
+  string("!=")->map(_ => BinaryOp(Neq)),
   char('=')->map(_ => Symbol(EqualSign)),
   char('{')->map(_ => Symbol(Lbracket)),
   char('}')->map(_ => Symbol(Rbracket)),

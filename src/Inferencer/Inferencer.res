@@ -17,21 +17,22 @@ let constTy = (c: Expr.Const.t): polyTy => {
 let binOpTy = (op: Token.BinOp.t): polyTy => {
   open Token.BinOp
   switch op {
-  | Plus => ([], funTy([int32Ty, int32Ty, int32Ty]))
-  | Sub => ([], funTy([int32Ty, int32Ty, int32Ty]))
-  | Mult => ([], funTy([int32Ty, int32Ty, int32Ty]))
-  | Div => ([], funTy([int32Ty, int32Ty, int32Ty]))
-  | Mod => ([], funTy([int32Ty, int32Ty, int32Ty]))
+  | Plus => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Sub => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Mult => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Div => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Mod => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
   | Eq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Lss => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Leq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Gtr => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Geq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
+  | Neq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
+  | Lss => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Leq => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Gtr => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
+  | Geq => polyOf(funTy([int32Ty, int32Ty, int32Ty]))
   }
 }
 
 let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: Core.t, tau: monoTy): result<
-  subst,
+  Subst.t,
   string,
 > => {
   collectCoreExprTypeSubsts(env, expr)->Result.flatMap(sig => {
@@ -40,7 +41,7 @@ let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: Core.t, tau: monoTy):
     )
   })
 }
-and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<subst, string> => {
+and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, string> => {
   open Result
 
   switch expr {

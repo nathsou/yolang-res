@@ -1,5 +1,5 @@
 module BinOp = {
-  type t = Plus | Sub | Mult | Div | Mod | Eq | Lss | Leq | Gtr | Geq
+  type t = Plus | Sub | Mult | Div | Mod | Eq | Neq | Lss | Leq | Gtr | Geq
 
   let show = op =>
     switch op {
@@ -9,6 +9,7 @@ module BinOp = {
     | Div => "/"
     | Mod => "%"
     | Eq => "=="
+    | Neq => "!="
     | Lss => "<"
     | Leq => "<="
     | Gtr => ">"

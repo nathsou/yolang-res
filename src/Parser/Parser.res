@@ -59,7 +59,10 @@ let comparisonOp = anyOf([
   token(BinaryOp(BinOp.Geq))->map(_ => BinOp.Geq),
 ])
 
-let eqOp = token(BinaryOp(BinOp.Eq))->map(_ => BinOp.Eq)
+let eqOp = alt(
+  token(BinaryOp(BinOp.Eq))->map(_ => BinOp.Eq),
+  token(BinaryOp(BinOp.Neq))->map(_ => BinOp.Neq),
+)
 
 let factor = app
 

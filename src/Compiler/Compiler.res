@@ -17,7 +17,24 @@ let rec compileExpr = (expr: Core.t): array<Wasm.Inst.t> => {
     | Token.BinOp.Sub => Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.SubI32]])
     | Token.BinOp.Mult => Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.MulI32]])
     | Token.BinOp.Div =>
-      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.DivI32Signed]])
+      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.DivI32Unsigned]])
+    | Token.BinOp.Eq =>
+      switch (lhs, rhs) {
+      | (Core.CoreConstExpr(_, Expr.Const.IntConst(0)), _) =>
+        Array.concat(compileExpr(rhs), [Wasm.Inst.EqzI32])
+      | (_, Core.CoreConstExpr(_, Expr.Const.IntConst(0))) =>
+        Array.concat(compileExpr(lhs), [Wasm.Inst.EqzI32])
+      | _ => Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.EqI32]])
+      }
+    | Token.BinOp.Neq => Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.NeI32]])
+    | Token.BinOp.Lss =>
+      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.LtI32Unsigned]])
+    | Token.BinOp.Leq =>
+      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.LeI32Unsigned]])
+    | Token.BinOp.Gtr =>
+      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.GtI32Unsigned]])
+    | Token.BinOp.Geq =>
+      Array.concatMany([compileExpr(lhs), compileExpr(rhs), [Wasm.Inst.GeI32Unsigned]])
     | _ => Js.Exn.raiseError(`compileExpr: binop '${Token.BinOp.show(op)}' not handled`)
     }
   | _ => Js.Exn.raiseError(`compileExpr: '${Core.show(expr)}' not handled`)

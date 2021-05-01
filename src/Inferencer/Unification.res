@@ -1,5 +1,4 @@
 open Belt
-open Subst
 open Types
 
 let rec occurs = (x, ty) =>
@@ -8,7 +7,7 @@ let rec occurs = (x, ty) =>
   | TyConst(_, args) => args->Array.some(occurs(x))
   }
 
-let bindVar = (x, ty, subst): result<subst, string> => {
+let bindVar = (x, ty, subst): result<Subst.t, string> => {
   if x->occurs(ty) {
     Error(`${Types.showMonoTy(TyVar(x))} occurs in ${Types.showMonoTy(ty)}`)
   } else {
