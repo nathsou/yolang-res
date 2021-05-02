@@ -4,11 +4,11 @@ open Types
 open Subst
 open Unification
 
-let constTy = (c: Expr.Const.t): polyTy => {
+let constTy = (c: Ast.Expr.Const.t): polyTy => {
   let ty = switch c {
-  | Expr.Const.IntConst(_) => u32Ty
-  | Expr.Const.BoolConst(_) => boolTy
-  | Expr.Const.UnitConst => unitTy
+  | Ast.Expr.Const.U32Const(_) => u32Ty
+  | Ast.Expr.Const.BoolConst(_) => boolTy
+  | Ast.Expr.Const.UnitConst => unitTy
   }
 
   polyOf(ty)
@@ -30,6 +30,40 @@ let binOpTy = (op: Token.BinOp.t): polyTy => {
   | Geq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
   }
 }
+
+// rewrite
+// { let a = 3; let b = 7; a * b }
+// into
+// let a = 3 in let b = 7 in a * b
+let rec rewriteExpr = expr => {
+  open CoreAst
+
+  switch expr {
+  | CoreBlockExpr(tau, stmts, lastExpr) => {
+      let rec aux = stmts =>
+        switch stmts {
+        | list{CoreLetStmt(x, e), ...tl} => CoreLetInExpr(tau, x, rewriteExpr(e), aux(tl))
+        | list{stmt, ...tl} => CoreBlockExpr(tau, [rewriteStmt(stmt)], Some(aux(tl)))
+        | list{} =>
+          lastExpr->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Expr.Const.UnitConst), e => e)
+        }
+
+      CoreBlockExpr(tau, [], Some(aux(stmts->List.fromArray)))
+    }
+  | _ => expr
+  }
+}
+
+and rewriteStmt = stmt =>
+  switch stmt {
+  | CoreExprStmt(expr) => expr->rewriteExpr->CoreExprStmt
+  | CoreLetStmt(x, rhs) => CoreLetStmt(x, rhs->rewriteExpr)
+  }
+
+and rewriteDecl = decl =>
+  switch decl {
+  | CoreAst.CoreFuncDecl(f, args, body) => CoreAst.CoreFuncDecl(f, args, rewriteExpr(body))
+  }
 
 let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: monoTy): result<
   Subst.t,
@@ -53,6 +87,16 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     | Some(ty) => unify(tau, Context.freshInstance(ty))
     | None => Error(`unbound variable: "${x}"`)
     }
+  | CoreAssignmentExpr(x, val) =>
+    switch env->Env.get(x) {
+    | Some(ty) =>
+      collectCoreExprTypeSubstsWith(env, val, Context.freshInstance(ty))->flatMap(sig1 =>
+        unify(substMono(sig1, CoreExpr.tyVarOf(expr)), unitTy)->map(sig2 =>
+          substCompose(sig2, sig1)
+        )
+      )
+    | None => Error(`unbound variable: "${x}"`)
+    }
   | CoreBinOpExpr(tau, a, op, b) =>
     collectCoreExprTypeSubsts(env, a)->flatMap(sigA => {
       let sigAGamma = substEnv(sigA, env)
@@ -63,24 +107,29 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         unify(opTy, tau')->map(sig => substCompose(sig, sigBA))
       })
     })
-  | CoreBlockExpr(tau, exprs) => {
+  | CoreBlockExpr(tau, stmts, lastExpr) => {
       open Array
 
-      exprs
+      stmts
       ->reduce(Ok(Map.Int.empty, env), (acc, e) => {
         acc->flatMap(((sig, env)) => {
-          collectCoreExprTypeSubsts(env, e)->Result.map(sig2 => {
+          collectCoreStmtTypeSubsts(env, e)->Result.map(sig2 => {
             (substCompose(sig2, sig), substEnv(sig2, env))
           })
         })
       })
       ->Result.flatMap(((sig, _)) => {
-        let lastTau = switch exprs->get(exprs->length - 1) {
-        | None => unitTy
-        | Some(e) => CoreExpr.tyVarOf(e)
+        switch lastExpr {
+        | Some(expr) =>
+          collectCoreExprTypeSubsts(substEnv(sig, env), expr)->Result.flatMap(sig2 => {
+            let retTau = lastExpr->Option.mapWithDefault(unitTy, CoreExpr.tyVarOf)
+            let sig21 = substCompose(sig2, sig)
+            unify(substMono(sig21, tau), substMono(sig21, retTau))->Result.map(sig3 =>
+              substCompose(sig3, sig21)
+            )
+          })
+        | None => unify(substMono(sig, tau), unitTy)->Result.map(sig2 => substCompose(sig2, sig))
         }
-
-        unify(tau, lastTau)->Result.map(sig2 => substCompose(sig2, sig))
       })
     }
   | CoreLetInExpr(tau, (x, tauX), e1, e2) => {
@@ -161,6 +210,14 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   }
 }
 
+and collectCoreStmtTypeSubsts = (env: Env.t, stmt: CoreStmt.t): result<Subst.t, string> => {
+  switch stmt {
+  | CoreExprStmt(expr) => collectCoreExprTypeSubsts(env, expr)
+  | CoreLetStmt(_, _) =>
+    Js.Exn.raiseError(`CoreLetStmt should have been rewritten to CoreLetIn in the inferencer`)
+  }
+}
+
 let inferCoreExprType = expr => {
   let env = Map.String.empty
   collectCoreExprTypeSubsts(env, expr)->Result.map(subst => {
@@ -169,34 +226,21 @@ let inferCoreExprType = expr => {
 }
 
 let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
-  open CoreDecl
-
   switch decl {
-  | CoreLetDecl((x, xTy), val) => {
-      let tau = Context.freshTyVar()
-      collectCoreExprTypeSubsts(
-        env,
-        CoreExpr.CoreLetInExpr(
-          tau,
-          (x, xTy),
-          val,
-          CoreExpr.CoreBlockExpr(Context.freshTyVar(), []),
-        ),
-      )->Result.map(sig => (substEnv(sig, env->Env.addMono(x, substMono(sig, xTy))), sig))
-    }
   | CoreFuncDecl((f, fTy), args, body) => {
       let tau = Context.freshTyVar()
-      collectCoreExprTypeSubstsWith(
-        env,
-        CoreExpr.CoreFuncExpr(tau, args, body),
-        fTy,
-      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f, tau)), sig))
+      collectCoreExprTypeSubstsWith(env, CoreFuncExpr(tau, args, body), fTy)->Result.map(sig => (
+        substEnv(sig, env->Env.addMono(f, tau)),
+        sig,
+      ))
     }
   }
 }
 
 let infer = (prog: array<CoreDecl.t>): result<(Env.t, Subst.t), string> => {
-  prog->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
+  prog
+  ->Array.map(rewriteDecl)
+  ->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
     acc->Result.flatMap(((envn, sign)) =>
       registerDecl(envn, decl)->Result.map(((env, sig)) => (env, substCompose(sig, sign)))
     )

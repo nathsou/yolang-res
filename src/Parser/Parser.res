@@ -1,25 +1,28 @@
 open Combinators
-open Expr
-open Decl
+open Ast
 open Belt
 open Token
+
+let decl: parser<Decl.t> = ref(_ => None)
+let expr: parser<Expr.t> = ref(_ => None)
+let exprWithoutBlock: parser<Expr.t> = ref(_ => None)
+let block: parser<Expr.t> = ref(_ => None)
+let stmt: parser<Stmt.t> = ref(_ => None)
 
 // expressions
 
 // precedence from highest to lowest
-let expr: parser<Expr.t> = ref(_ => None)
-let block: parser<Expr.t> = ref(_ => None)
 
 let int = satBy(t =>
   switch t {
-  | Nat(n) => Some(ConstExpr(IntConst(n)))
+  | Nat(n) => Some(Ast.ConstExpr(U32Const(n)))
   | _ => None
   }
 )
 
 let bool = satBy(t =>
   switch t {
-  | Bool(b) => Some(ConstExpr(BoolConst(b)))
+  | Bool(b) => Some(Ast.ConstExpr(BoolConst(b)))
   | _ => None
   }
 )
@@ -31,9 +34,9 @@ let ident = satBy(t =>
   }
 )
 
-let var = ident->map(x => VarExpr(x))
+let var = ident->map(x => Ast.VarExpr(x))
 
-let unit = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => ConstExpr(UnitConst))
+let unit = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Ast.ConstExpr(UnitConst))
 
 let primary = anyOf([int, bool, unit, var, parens(expr)])
 
@@ -84,7 +87,7 @@ let ifThenElse = alt(
     thenExpr,
     _else,
     elseExpr,
-  )) => IfExpr(cond, thenExpr, elseExpr)),
+  )) => Ast.IfExpr(cond, thenExpr, elseExpr)),
   equality,
 )
 
@@ -96,38 +99,60 @@ let letIn = alt(
     expr,
     token(Keyword(Keywords.In)),
     expr,
-  )->map(((_, x, _, e1, _, e2)) => LetInExpr(x, e1, e2)),
+  )->map(((_, x, _, e1, _, e2)) => Ast.LetInExpr(x, e1, e2)),
   ifThenElse,
 )
 
 let arguments = alt(parens(commas(ident)), ident->map(x => [x]))
 
 let lambda = alt(
-  seq3(arguments, token(Symbol(RightArrow)), expr)->map(((args, _, body)) => FuncExpr(args, body)),
+  seq3(arguments, token(Symbol(RightArrow)), expr)->map(((args, _, body)) => Ast.FuncExpr(
+    args,
+    body,
+  )),
   letIn,
 )
 
+let assignment = alt(
+  seq3(ident, token(Symbol(Symbol.EqualSign)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(
+    x,
+    val,
+  )),
+  lambda,
+)
+
 block :=
-  alt(
-    seq3(token(Symbol(Lbracket)), semicolons(expr), token(Symbol(Rbracket)))->map(((
-      _,
-      exprs,
-      _,
-    )) => BlockExpr(exprs)),
-    lambda,
+  (
+    seq4(
+      token(Symbol(Lbracket)),
+      many(stmt),
+      optional(exprWithoutBlock),
+      token(Symbol(Rbracket)),
+    )->map(((_, stmts, lastExpr, _)) => Ast.BlockExpr(stmts, lastExpr))
   ).contents
 
-expr := block.contents
+expr := alt(block, assignment).contents
+
+exprWithoutBlock := assignment.contents
+
+// statements
+
+let exprStmt = then(expr, token(Symbol(Symbol.SemiColon)))->map(((expr, _)) => Ast.ExprStmt(expr))
+
+let letStmt = alt(
+  seq5(
+    token(Keyword(Keywords.Let)),
+    ident,
+    token(Symbol(EqualSign)),
+    expr,
+    token(Symbol(Symbol.SemiColon)),
+  )->map(((_let, x, _eq, e, _)) => Ast.LetStmt(x, e)),
+  exprStmt,
+)
+
+stmt := letStmt.contents
 
 // declarations
-
-let letDecl =
-  seq4(token(Keyword(Keywords.Let)), ident, token(Symbol(EqualSign)), expr)->map(((
-    _let,
-    x,
-    _eq,
-    e,
-  )) => LetDecl(x, e))
 
 let funDecl =
   seq4(token(Keyword(Keywords.Fn)), ident, parens(commas(ident)), block)->map(((
@@ -135,9 +160,9 @@ let funDecl =
     f,
     args,
     body,
-  )) => FuncDecl(f, args, body))
+  )) => Ast.FuncDecl(f, args, body))
 
-let decl = funDecl
+decl := funDecl.contents
 
 let prog = many(decl)
 

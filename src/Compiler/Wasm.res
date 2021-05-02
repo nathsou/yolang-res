@@ -160,6 +160,7 @@ module Inst = {
     | Return
     | GetLocal(int)
     | SetLocal(int)
+    | Drop
     | AddI32
     | SubI32
     | MulI32
@@ -215,6 +216,7 @@ module Inst = {
     | Return => 0x0f
     | GetLocal(_) => 0x20
     | SetLocal(_) => 0x21
+    | Drop => 0x1a
     | AddI32 => 0x6a
     | SubI32 => 0x6b
     | MulI32 => 0x6c

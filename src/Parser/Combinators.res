@@ -149,3 +149,5 @@ let sepBy = (p, sep) => {
 
 let commas = p => sepBy(p, token(Symbol(Comma)))
 let semicolons = p => sepBy(p, token(Symbol(SemiColon)))
+
+let optional = p => alt(p->map(v => Some(v)), ref(input => Some((None, input))))

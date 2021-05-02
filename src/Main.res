@@ -34,32 +34,34 @@ let run = input => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
+        // Js.log(
+        //   coreProg
+        //   ->Array.map(Inferencer.rewriteDecl)
+        //   ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=Some(subst), d)) ++ "\n\n",
+        // )
+        Js.log(
+          coreProg
+          ->Array.map(Inferencer.rewriteDecl)
+          ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
+        )
+
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
         decompile(outFile)
       }
-    | Error(err) => `${prog->Array.joinWith("\n\n", Decl.show)}\n\n${err}`
+    | Error(err) => `${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`
     }
   })
 }
 
 let prog = `
-
-  fn add1(a, b) {
-    let one = 1 in
-    a + b + one
-  }
-
-  fn main() {
-    let n = 7 in
-    let m = 1 in
-    if 3 * 7 > 22 {
-      n + m
-    } else {
-      n * m
-    }
+  fn add(a, b) {
+    let c = 1;
+    let d = 2;
+    let e = 3;
+    a * b + c
   }
 `
 

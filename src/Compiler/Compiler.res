@@ -6,9 +6,15 @@ module Local = {
     name: string,
     depth: int,
     ty: Types.monoTy,
+    isMutable: bool,
   }
 
-  let make = (name, depth, ty): t => {name: name, depth: depth, ty: ty}
+  let make = (name, depth, ty, ~isMutable): t => {
+    name: name,
+    depth: depth,
+    ty: ty,
+    isMutable: isMutable,
+  }
 }
 
 let wasmValueTyOf = (tau: Types.monoTy): Wasm.ValueType.t => {
@@ -53,8 +59,9 @@ module Func = {
     name: string,
     ty: Types.monoTy,
     scopeDepth: int,
+    ~isMutable: bool,
   ): Wasm.Func.Locals.index => {
-    let _ = self.locals->Js.Array2.push(Local.make(name, scopeDepth, ty))
+    let _ = self.locals->Js.Array2.push(Local.make(name, scopeDepth, ty, ~isMutable))
     self.params->Array.length + self.locals->Array.length - 1
   }
 
@@ -87,7 +94,7 @@ type t = {
   mutable scopeDepth: int,
 }
 
-let getCurrentFuncExn = (self: t) => {
+let getCurrentFuncExn = (self: t): Func.t => {
   switch self.funcs->Array.get(self.funcs->Array.length - 1) {
   | Some(f) => f
   | None => Js.Exn.raiseError(`called getFuncExn on an empty function list`)
@@ -106,9 +113,9 @@ let endScope = (self: t) => {
   self.scopeDepth = self.scopeDepth - 1
 }
 
-let declareLocalVar = (self: t, name: string, ty: Types.monoTy): unit => {
+let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool): unit => {
   let f = self->getCurrentFuncExn
-  let localIndex = f->Func.addLocal(name, ty, self.scopeDepth)
+  let localIndex = f->Func.addLocal(name, ty, self.scopeDepth, ~isMutable)
   self->emit(Wasm.Inst.SetLocal(localIndex))
 }
 
@@ -117,13 +124,17 @@ let resolveLocalVar = (self: t, name: string): Wasm.Func.Locals.index => {
   f->Func.findLocal(name)
 }
 
+let emitUnit = (self: t): unit => {
+  self->emit(Wasm.Inst.ConstI32(0))
+}
+
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(_, c) => {
       let inst = switch c {
-      | Expr.Const.IntConst(n) => Wasm.Inst.ConstI32(n)
-      | Expr.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
-      | Expr.Const.UnitConst => Wasm.Inst.ConstI32(0)
+      | Ast.Expr.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
+      | Ast.Expr.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
+      | Ast.Expr.Const.UnitConst => Wasm.Inst.ConstI32(0)
       }
 
       self->emit(inst)
@@ -152,11 +163,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     | Token.BinOp.Eq =>
       switch (lhs, rhs) {
-      | (CoreExpr.CoreConstExpr(_, Expr.Const.IntConst(0)), _) => {
+      | (CoreConstExpr(_, Ast.Expr.Const.U32Const(0)), _) => {
           self->compileExpr(rhs)
           self->emit(Wasm.Inst.EqzI32)
         }
-      | (_, CoreExpr.CoreConstExpr(_, Expr.Const.IntConst(0))) => {
+      | (_, CoreConstExpr(_, Ast.Expr.Const.U32Const(0))) => {
           self->compileExpr(lhs)
           self->emit(Wasm.Inst.EqzI32)
         }
@@ -193,9 +204,15 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     | _ => Js.Exn.raiseError(`compileExpr: binop '${Token.BinOp.show(op)}' not handled`)
     }
-  | CoreBlockExpr(_, exprs) => {
+  | CoreBlockExpr(_, stmts, lastExpr) => {
       self->beginScope
-      exprs->Js.Array2.forEach(self->compileExpr)
+      stmts->Array.forEach(self->compileStmt)
+
+      switch lastExpr {
+      | Some(expr) => self->compileExpr(expr)
+      | None => self->emitUnit
+      }
+
       self->endScope
     }
   | CoreIfExpr(_, cond, thenExpr, elseExpr) => {
@@ -208,22 +225,35 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreLetInExpr(_, (x, xTy), valExpr, inExpr) => {
       self->compileExpr(valExpr)
-      self->declareLocalVar(x, xTy)
+      self->declareLocalVar(x, xTy, ~isMutable=false)
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(_, x) => self->emit(Wasm.Inst.GetLocal(self->resolveLocalVar(x)))
+  | CoreAssignmentExpr(x, rhs) => {
+      let idx = self->resolveLocalVar(x)
+      self->compileExpr(rhs)
+      self->emit(Wasm.Inst.SetLocal(idx))
+    }
   | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }
 }
 
-let compileDecl = (self: t, decl: CoreDecl.t) => {
-  open CoreDecl
-
-  switch decl {
-  | CoreLetDecl((x, xTy), val) => {
-      self->compileExpr(val)
-      let _ = self->declareLocalVar(x, xTy)
+and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
+  switch stmt {
+  | CoreExprStmt(expr) => {
+      self->compileExpr(expr)
+      // drop the return value on the stack
+      let _ = getCurrentFuncExn(self).instructions->Js.Array2.pop
     }
+  | CoreLetStmt((x, xTy), rhs) => {
+      self->compileExpr(rhs)
+      self->declareLocalVar(x, xTy, ~isMutable=false)
+    }
+  }
+}
+
+and compileDecl = (self: t, decl: CoreDecl.t): unit => {
+  switch decl {
   | CoreFuncDecl((f, _), args, body) => {
       let func = Func.make(f, args, CoreExpr.tyVarOf(body))
       let _ = self.funcs->Js.Array2.push(func)
