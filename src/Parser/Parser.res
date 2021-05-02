@@ -140,13 +140,14 @@ exprWithoutBlock := assignment.contents
 let exprStmt = then(expr, token(Symbol(Symbol.SemiColon)))->map(((expr, _)) => Ast.ExprStmt(expr))
 
 let letStmt = alt(
-  seq5(
+  seq6(
     token(Keyword(Keywords.Let)),
+    optional(token(Keyword(Keywords.Mut))),
     ident,
     token(Symbol(EqualSign)),
     expr,
     token(Symbol(Symbol.SemiColon)),
-  )->map(((_let, x, _eq, e, _)) => Ast.LetStmt(x, e)),
+  )->map(((_let, mut, x, _eq, e, _)) => Ast.LetStmt(x, mut->Option.isSome, e)),
   exprStmt,
 )
 

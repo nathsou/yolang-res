@@ -42,7 +42,7 @@ let rec rewriteExpr = expr => {
   | CoreBlockExpr(tau, stmts, lastExpr) => {
       let rec aux = stmts =>
         switch stmts {
-        | list{CoreLetStmt(x, e), ...tl} =>
+        | list{CoreLetStmt(x, _, e), ...tl} =>
           Some(
             CoreLetInExpr(
               tau,
@@ -66,7 +66,7 @@ let rec rewriteExpr = expr => {
 and rewriteStmt = stmt =>
   switch stmt {
   | CoreExprStmt(expr) => expr->rewriteExpr->CoreExprStmt
-  | CoreLetStmt(x, rhs) => CoreLetStmt(x, rhs->rewriteExpr)
+  | CoreLetStmt(x, mut, rhs) => CoreLetStmt(x, mut, rhs->rewriteExpr)
   }
 
 and rewriteDecl = decl =>
@@ -222,7 +222,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
 and collectCoreStmtTypeSubsts = (env: Env.t, stmt: CoreStmt.t): result<Subst.t, string> => {
   switch stmt {
   | CoreExprStmt(expr) => collectCoreExprTypeSubsts(env, expr)
-  | CoreLetStmt(_, _) =>
+  | CoreLetStmt(_, _, _) =>
     Js.Exn.raiseError(`CoreLetStmt should have been rewritten to CoreLetIn in the inferencer`)
   }
 }

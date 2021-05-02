@@ -34,16 +34,16 @@ let run = input => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
-        // Js.log(
-        //   coreProg->Array.joinWith("\n\n", d =>
-        //     Core.CoreDecl.show(~subst=Some(subst), d)
-        //   ) ++ "\n\n",
-        // )
         Js.log(
-          coreProg
-          ->Array.map(Inferencer.rewriteDecl)
-          ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
+          coreProg->Array.joinWith("\n\n", d =>
+            Core.CoreDecl.show(~subst=Some(subst), d)
+          ) ++ "\n\n",
         )
+        // Js.log(
+        //   coreProg
+        //   ->Array.map(Inferencer.rewriteDecl)
+        //   ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
+        // )
 
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
 
@@ -67,8 +67,10 @@ let prog = `
   fn test2() {
     let c = 1;
     let d = 2;
-    let e = 3;
-    c + d * e
+    let mut e = 3;
+    e = d + 1;
+    let mut f = e + 2 + c;
+    f = 3
   }
 `
 

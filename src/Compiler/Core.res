@@ -14,7 +14,7 @@ module CoreAst = {
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>)
     | CoreIfExpr(monoTy, expr, expr, expr)
   and decl = CoreFuncDecl((string, monoTy), array<(string, monoTy)>, expr)
-  and stmt = CoreLetStmt((string, monoTy), expr) | CoreExprStmt(expr)
+  and stmt = CoreLetStmt((string, monoTy), bool, expr) | CoreExprStmt(expr)
 
   let tyVarOfExpr = (expr: expr): monoTy => {
     switch expr {
@@ -33,7 +33,7 @@ module CoreAst = {
   let tyVarOfStmt = (stmt: stmt): monoTy => {
     switch stmt {
     | CoreExprStmt(expr) => tyVarOfExpr(expr)
-    | CoreLetStmt(_, _) => unitTy
+    | CoreLetStmt(_, _, _) => unitTy
     }
   }
 
@@ -76,7 +76,12 @@ module CoreAst = {
 
   and showStmt = stmt =>
     switch stmt {
-    | CoreLetStmt((x, _), rhs) => `let ${x} = ${showExpr(rhs)}`
+    | CoreLetStmt((x, _), mut, rhs) =>
+      if mut {
+        `let mut ${x} = ${showExpr(rhs)}`
+      } else {
+        `let ${x} = ${showExpr(rhs)}`
+      }
     | CoreExprStmt(expr) => showExpr(expr)
     }
 
@@ -115,8 +120,6 @@ module CoreAst = {
       | [] => CoreFuncExpr(tau(), [("_x", Context.freshTyVar())], fromExpr(body))
       | _ => CoreFuncExpr(tau(), args->Array.map(x => (x, Context.freshTyVar())), fromExpr(body))
       }
-    | LetExpr(x, e) =>
-      CoreLetInExpr(tau(), (x, Context.freshTyVar()), fromExpr(e), fromExpr(ConstExpr(UnitConst)))
     | LetInExpr(x, e1, e2) =>
       CoreLetInExpr(tau(), (x, Context.freshTyVar()), fromExpr(e1), fromExpr(e2))
     | AppExpr(f, args) => CoreAppExpr(tau(), fromExpr(f), args->Array.map(arg => fromExpr(arg)))
@@ -133,7 +136,7 @@ module CoreAst = {
 
   and fromStmt = stmt =>
     switch stmt {
-    | LetStmt(x, rhs) => CoreLetStmt((x, Context.freshTyVar()), fromExpr(rhs))
+    | LetStmt(x, mut, rhs) => CoreLetStmt((x, Context.freshTyVar()), mut, fromExpr(rhs))
     | ExprStmt(expr) => CoreExprStmt(fromExpr(expr))
     }
 
@@ -169,7 +172,8 @@ module CoreAst = {
   and substStmt = (s: Subst.t, stmt: stmt): stmt => {
     switch stmt {
     | CoreExprStmt(expr) => CoreExprStmt(substExpr(s, expr))
-    | CoreLetStmt((x, xTy), rhs) => CoreLetStmt((x, Subst.substMono(s, xTy)), substExpr(s, rhs))
+    | CoreLetStmt((x, xTy), mut, rhs) =>
+      CoreLetStmt((x, Subst.substMono(s, xTy)), mut, substExpr(s, rhs))
     }
   }
 

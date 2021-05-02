@@ -65,12 +65,12 @@ module Func = {
     self.params->Array.length + self.locals->Array.length - 1
   }
 
-  let findLocal = (self: t, name: string): Wasm.Func.Locals.index => {
+  let findLocal = (self: t, name: string): (Wasm.Func.Locals.index, bool) => {
     switch self.params->Array.getIndexBy(((x, _)) => x == name) {
-    | Some(idx) => idx
+    | Some(idx) => (idx, true)
     | None =>
       switch self.locals->Array.getIndexBy(local => local.name == name) {
-      | Some(idx) => self.params->Array.length + idx
+      | Some(idx) => (self.params->Array.length + idx, Array.getExn(self.locals, idx).isMutable)
       | None => Js.Exn.raiseError(`findLocal: ${name} not found`)
       }
     }
@@ -120,7 +120,7 @@ let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool
   self->emit(Wasm.Inst.SetLocal(localIndex))
 }
 
-let resolveLocalVar = (self: t, name: string): Wasm.Func.Locals.index => {
+let resolveLocalVar = (self: t, name: string): (Wasm.Func.Locals.index, bool) => {
   let f = self->getCurrentFuncExn
   f->Func.findLocal(name)
 }
@@ -229,11 +229,20 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->declareLocalVar(x, xTy, ~isMutable=false)
       self->compileExpr(inExpr)
     }
-  | CoreVarExpr(_, x) => self->emit(Wasm.Inst.GetLocal(self->resolveLocalVar(x)))
+  | CoreVarExpr(_, x) => {
+      let (idx, _) = self->resolveLocalVar(x)
+      self->emit(Wasm.Inst.GetLocal(idx))
+    }
   | CoreAssignmentExpr(x, rhs) => {
-      let idx = self->resolveLocalVar(x)
+      let (idx, isMutable) = self->resolveLocalVar(x)
+
+      if !isMutable {
+        Js.Exn.raiseError(`${x} is immutable`)
+      }
+
       self->compileExpr(rhs)
       self->emit(Wasm.Inst.SetLocal(idx))
+      self->emitUnit
     }
   | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }
@@ -246,9 +255,9 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
       // drop the return value on the stack
       self->emit(Wasm.Inst.Drop)
     }
-  | CoreLetStmt((x, xTy), rhs) => {
+  | CoreLetStmt((x, xTy), isMutable, rhs) => {
       self->compileExpr(rhs)
-      self->declareLocalVar(x, xTy, ~isMutable=false)
+      self->declareLocalVar(x, xTy, ~isMutable)
     }
   }
 }

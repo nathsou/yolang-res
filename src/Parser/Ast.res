@@ -18,12 +18,11 @@ module Ast = {
     | VarExpr(string)
     | AssignmentExpr(string, expr)
     | FuncExpr(array<string>, expr)
-    | LetExpr(string, expr)
     | LetInExpr(string, expr, expr)
     | AppExpr(expr, array<expr>)
     | BlockExpr(array<stmt>, option<expr>)
     | IfExpr(expr, expr, expr)
-  and stmt = LetStmt(string, expr) | ExprStmt(expr)
+  and stmt = LetStmt(string, bool, expr) | ExprStmt(expr)
   and decl = FuncDecl(string, array<string>, expr)
 
   let rec showExpr = expr =>
@@ -32,7 +31,6 @@ module Ast = {
     | ConstExpr(c) => c->Const.show
     | VarExpr(x) => x
     | AssignmentExpr(x, val) => `${x} = ${showExpr(val)}`
-    | LetExpr(x, e) => `let ${x} = ${showExpr(e)}`
     | LetInExpr(x, e1, e2) => `let ${x} = ${showExpr(e1)} in ${showExpr(e2)}`
     | FuncExpr(args, body) =>
       switch args {
@@ -57,7 +55,12 @@ module Ast = {
     }
   and showStmt = stmt =>
     switch stmt {
-    | LetStmt(x, rhs) => `let ${x} = ${showExpr(rhs)}`
+    | LetStmt(x, mut, rhs) =>
+      if mut {
+        `let mut ${x} = ${showExpr(rhs)}`
+      } else {
+        `let ${x} = ${showExpr(rhs)}`
+      }
     | ExprStmt(expr) => showExpr(expr) ++ ";"
     }
 }
