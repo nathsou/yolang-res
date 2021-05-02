@@ -416,7 +416,7 @@ module Module = {
     importsCount: 0,
   }
 
-  let addFuncMut = (self: t, (sig, body): Func.t): Func.index => {
+  let addFunc = (self: t, (sig, body): Func.t): Func.index => {
     let sigIndex = self.typeSection->TypeSection.addMut(sig)
     let _ = self.funcSection->FuncSection.addSignatureMut(sigIndex)
     self.codeSection->CodeSection.addFuncMut(body) + self.importsCount

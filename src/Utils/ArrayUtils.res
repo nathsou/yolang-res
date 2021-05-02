@@ -16,3 +16,19 @@ let firstSomeBy = (arr: array<'a>, f: 'a => option<'b>): option<'b> => {
 
   res.contents
 }
+
+// returns the largest index i such that pred(arr[i]) is true
+let getReverseIndexBy = (arr: array<'a>, pred: 'a => bool): option<int> => {
+  let res = ref(None)
+  let i = ref(arr->Array.length - 1)
+
+  while res.contents->Option.isNone && i.contents >= 0 {
+    if pred(arr->Array.getExn(i.contents)) {
+      res := Some(i.contents)
+    }
+
+    i := i.contents - 1
+  }
+
+  res.contents 
+}

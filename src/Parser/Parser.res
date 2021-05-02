@@ -126,7 +126,7 @@ block :=
     seq4(
       token(Symbol(Lbracket)),
       many(stmt),
-      optional(exprWithoutBlock),
+      optional(expr),
       token(Symbol(Rbracket)),
     )->map(((_, stmts, lastExpr, _)) => Ast.BlockExpr(stmts, lastExpr))
   ).contents

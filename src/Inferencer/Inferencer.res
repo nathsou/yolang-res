@@ -54,7 +54,7 @@ let rec rewriteExpr = expr => {
             ),
           )
         | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl)))
-        | list{} => lastExpr
+        | list{} => lastExpr->Option.map(rewriteExpr)
         }
 
       CoreBlockExpr(tau, [], aux(stmts->List.fromArray))

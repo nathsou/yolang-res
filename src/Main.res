@@ -32,17 +32,18 @@ let decompile: string => string = %raw(`
 let run = input => {
   Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
+        Js.log(
+          coreProg
+          ->Array.map(Inferencer.rewriteDecl)
+          ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
+        )
+
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
-        Js.log(
-          coreProg->Array.joinWith("\n\n", d =>
-            Core.CoreDecl.show(~subst=Some(subst), d)
-          ) ++ "\n\n",
-        )
         // Js.log(
-        //   coreProg
-        //   ->Array.map(Inferencer.rewriteDecl)
-        //   ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
+        //   coreProg->Array.joinWith("\n\n", d =>
+        //     Core.CoreDecl.show(~subst=Some(subst), d)
+        //   ) ++ "\n\n",
         // )
 
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
@@ -57,20 +58,15 @@ let run = input => {
 }
 
 let prog = `
-  fn test1() {
-    let c = 1;
-    let d = 2;
-    let e = 3;
-    c + d * e;
-  }
-
-  fn test2() {
-    let c = 1;
-    let d = 2;
-    let mut e = 3;
-    e = d + 1;
-    let mut f = e + 2 + c;
-    f = 3
+  fn main() {
+    let a = 3;
+    {
+      let b = 7;
+      {
+        let a = 1;
+        a * b
+      }
+    }
   }
 `
 

@@ -69,7 +69,7 @@ module Func = {
     switch self.params->Array.getIndexBy(((x, _)) => x == name) {
     | Some(idx) => (idx, true)
     | None =>
-      switch self.locals->Array.getIndexBy(local => local.name == name) {
+      switch self.locals->ArrayUtils.getReverseIndexBy(local => local.name == name) {
       | Some(idx) => (self.params->Array.length + idx, Array.getExn(self.locals, idx).isMutable)
       | None => Js.Exn.raiseError(`findLocal: ${name} not found`)
       }
@@ -283,7 +283,7 @@ let compile = (prog: array<CoreDecl.t>): Wasm.Module.t => {
   prog->Array.forEach(self->compileDecl)
 
   self.funcs->Array.forEach(f => {
-    let _ = self.mod->Wasm.Module.addFuncMut(f->Func.toWasmFunc)
+    let _ = self.mod->Wasm.Module.addFunc(f->Func.toWasmFunc)
   })
 
   self.mod
