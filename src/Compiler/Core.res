@@ -68,7 +68,8 @@ module CoreAst = {
         Array.concat(
           stmts->Array.map(showStmt),
           lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
-        )->Array.joinWith(";\n", x => "  " ++ x) ++ "\n}",
+        )->Array.joinWith(";\n", x => "  " ++ x) ++
+        (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
     }
   }

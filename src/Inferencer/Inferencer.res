@@ -42,13 +42,22 @@ let rec rewriteExpr = expr => {
   | CoreBlockExpr(tau, stmts, lastExpr) => {
       let rec aux = stmts =>
         switch stmts {
-        | list{CoreLetStmt(x, e), ...tl} => CoreLetInExpr(tau, x, rewriteExpr(e), aux(tl))
-        | list{stmt, ...tl} => CoreBlockExpr(tau, [rewriteStmt(stmt)], Some(aux(tl)))
-        | list{} =>
-          lastExpr->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Expr.Const.UnitConst), e => e)
+        | list{CoreLetStmt(x, e), ...tl} =>
+          Some(
+            CoreLetInExpr(
+              tau,
+              x,
+              rewriteExpr(e),
+              aux(tl)->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Expr.Const.UnitConst), x =>
+                x
+              ),
+            ),
+          )
+        | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl)))
+        | list{} => lastExpr
         }
 
-      CoreBlockExpr(tau, [], Some(aux(stmts->List.fromArray)))
+      CoreBlockExpr(tau, [], aux(stmts->List.fromArray))
     }
   | _ => expr
   }

@@ -35,9 +35,9 @@ let run = input => {
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
         // Js.log(
-        //   coreProg
-        //   ->Array.map(Inferencer.rewriteDecl)
-        //   ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=Some(subst), d)) ++ "\n\n",
+        //   coreProg->Array.joinWith("\n\n", d =>
+        //     Core.CoreDecl.show(~subst=Some(subst), d)
+        //   ) ++ "\n\n",
         // )
         Js.log(
           coreProg
@@ -57,11 +57,18 @@ let run = input => {
 }
 
 let prog = `
-  fn add(a, b) {
+  fn test1() {
     let c = 1;
     let d = 2;
     let e = 3;
-    a * b + c
+    c + d * e;
+  }
+
+  fn test2() {
+    let c = 1;
+    let d = 2;
+    let e = 3;
+    c + d * e
   }
 `
 

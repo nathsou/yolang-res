@@ -81,6 +81,7 @@ module Func = {
       self.params->Array.map(((_, xTy)) => xTy->wasmValueTyOf),
       Some(self.ret->wasmValueTyOf),
     )
+
     let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
     let body = Wasm.Func.Body.make(locals, self.instructions)
 
@@ -243,7 +244,7 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
   | CoreExprStmt(expr) => {
       self->compileExpr(expr)
       // drop the return value on the stack
-      let _ = getCurrentFuncExn(self).instructions->Js.Array2.pop
+      self->emit(Wasm.Inst.Drop)
     }
   | CoreLetStmt((x, xTy), rhs) => {
       self->compileExpr(rhs)
