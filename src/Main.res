@@ -34,18 +34,7 @@ let run = input => {
     let coreExpr = Core.fromExpr(expr)
     switch Inferencer.inferCoreExprType(coreExpr) {
     | Ok((_, _)) => {
-        let insts = Compiler.compileExpr(coreExpr)
-
-        let mod = {
-          let mod = Wasm.Module.make()
-          let sig = Wasm.Func.Signature.make([], Some(Wasm.ValueType.I32))
-
-          let body = Wasm.Func.Body.make([], insts)
-
-          let f = Wasm.Func.make(sig, body)
-          let _ = mod->Wasm.Module.addFuncMut(f)
-          mod
-        }
+        let mod = Compiler.compile(coreExpr)
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
