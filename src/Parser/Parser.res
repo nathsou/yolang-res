@@ -91,6 +91,11 @@ let ifThenElse = alt(
   equality,
 )
 
+let whileExpr = alt(
+  seq3(token(Keyword(Keywords.While)), expr, block)->map(((_, cond, body)) => Ast.WhileExpr(cond, body)),
+  ifThenElse
+)
+
 let letIn = alt(
   seq6(
     token(Keyword(Keywords.Let)),
@@ -100,7 +105,7 @@ let letIn = alt(
     token(Keyword(Keywords.In)),
     expr,
   )->map(((_, x, _, e1, _, e2)) => Ast.LetInExpr(x, e1, e2)),
-  ifThenElse,
+  whileExpr,
 )
 
 let arguments = alt(parens(commas(ident)), ident->map(x => [x]))

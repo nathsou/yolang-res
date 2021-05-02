@@ -34,7 +34,7 @@ module Symbol = {
 }
 
 module Keywords = {
-  type t = Let | Mut | In | If | Else | Fn
+  type t = Let | Mut | In | If | Else | Fn | While
 
   let show = kw =>
     switch kw {
@@ -44,6 +44,7 @@ module Keywords = {
     | If => "if"
     | Else => "else"
     | Fn => "fn"
+    | While => "while"
     }
 }
 

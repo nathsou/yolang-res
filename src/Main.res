@@ -67,14 +67,15 @@ let run = input => {
 
 let prog = `
   fn main() {
-    let a = 3;
-    {
-      let b = 7;
-      {
-        let a = a + 1;
-        a * b
-      }
-    }
+    let mut i = 0;
+    let mut sum = 0;
+
+    while i <= 1000 {
+      sum = sum + i * i;
+      i = i + 1;
+    };
+
+    sum
   }
 `
 

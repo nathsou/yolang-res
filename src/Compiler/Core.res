@@ -13,6 +13,7 @@ module CoreAst = {
     | CoreAppExpr(monoTy, expr, array<expr>)
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>)
     | CoreIfExpr(monoTy, expr, expr, expr)
+    | CoreWhileExpr(expr, expr)
   and decl = CoreFuncDecl((string, monoTy), array<(string, monoTy)>, expr)
   and stmt = CoreLetStmt((string, monoTy), bool, expr) | CoreExprStmt(expr)
 
@@ -27,6 +28,7 @@ module CoreAst = {
     | CoreAppExpr(tau, _, _) => tau
     | CoreBlockExpr(tau, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
+    | CoreWhileExpr(_, _) => unitTy
     }
   }
 
@@ -71,6 +73,7 @@ module CoreAst = {
         )->Array.joinWith(";\n", x => "  " ++ x) ++
         (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
+    | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
     }
   }
 
@@ -131,6 +134,7 @@ module CoreAst = {
       }
     | IfExpr(cond, thenE, elseE) =>
       CoreIfExpr(tau(), fromExpr(cond), fromExpr(thenE), fromExpr(elseE))
+    | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     }
   }
 
@@ -166,6 +170,7 @@ module CoreAst = {
       CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(recCall))
     | CoreIfExpr(tau, cond, thenE, elseE) =>
       CoreIfExpr(subst(tau), recCall(cond), recCall(thenE), recCall(elseE))
+    | CoreWhileExpr(cond, body) => CoreWhileExpr(recCall(cond), recCall(body))
     }
   }
 

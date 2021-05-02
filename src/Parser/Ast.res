@@ -22,6 +22,7 @@ module Ast = {
     | AppExpr(expr, array<expr>)
     | BlockExpr(array<stmt>, option<expr>)
     | IfExpr(expr, expr, expr)
+    | WhileExpr(expr, expr)
   and stmt = LetStmt(string, bool, expr) | ExprStmt(expr)
   and decl = FuncDecl(string, array<string>, expr)
 
@@ -47,6 +48,7 @@ module Ast = {
         stmts->Array.map(showStmt),
         lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
       )->Array.joinWith(";\n", str => `  ${str}`) ++ "}\n}"
+    | WhileExpr(cond, body) => `while ${showExpr(cond)} ${showExpr(body)}`
     }
 
   and showDecl = decl =>

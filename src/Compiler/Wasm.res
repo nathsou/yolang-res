@@ -463,14 +463,19 @@ module Module = {
     importsCount: 0,
   }
 
-  let addFunc = (self: t, name: string, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
+  let addFunc = (self: t, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
     let sigIndex = self.typeSection->TypeSection.add(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
-    let funcIndex = self.codeSection->CodeSection.addFunc(body) + self.importsCount
+    self.codeSection->CodeSection.addFunc(body) + self.importsCount
+  }
+
+  let addExportedFunc = (self: t, name: string, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
+    let funcIndex = self->addFunc(sig, body)
     self.exportSection->ExportSection.addExport(ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex))
 
     funcIndex
   }
+  
 
   let encode = (self: t): Vec.t => {
     Array.concatMany([

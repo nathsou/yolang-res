@@ -29,6 +29,18 @@ let wasmValueTyOf = (tau: Types.monoTy): Wasm.ValueType.t => {
   }
 }
 
+let wasmBlockRetTyOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
+  open Types
+  open Wasm.BlockReturnType
+  switch tau {
+  | TyConst("u32", []) => I32
+  | TyConst("u64", []) => I64
+  | TyConst("bool", []) => I32
+  | TyConst("()", []) => I32
+  | _ => Js.Exn.raiseError(`wasmBlockRetTyOf: cannot convert ${showMonoTy(tau)}`)
+  }
+}
+
 module Func = {
   type t = {
     name: string,
@@ -216,9 +228,10 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->endScope
     }
-  | CoreIfExpr(_, cond, thenExpr, elseExpr) => {
+  | CoreIfExpr(tau, cond, thenExpr, elseExpr) => {
+      let retTy = tau->wasmBlockRetTyOf 
       self->compileExpr(cond)
-      self->emit(Wasm.Inst.If(Wasm.BlockReturnType.I32))
+      self->emit(Wasm.Inst.If(retTy))
       self->compileExpr(thenExpr)
       self->emit(Wasm.Inst.Else)
       self->compileExpr(elseExpr)
@@ -244,6 +257,19 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emit(Wasm.Inst.SetLocal(idx))
       self->emitUnit
     }
+  | CoreWhileExpr(cond, body) => {
+    self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
+    self->emit(Wasm.Inst.Loop(Wasm.BlockReturnType.Void))
+    self->compileExpr(cond)
+    self->emit(Wasm.Inst.EqzI32)
+    self->emit(Wasm.Inst.BranchIf(1))
+    self->compileExpr(body)
+    self->emit(Wasm.Inst.Drop) // todo optimize?
+    self->emit(Wasm.Inst.Branch(0))
+    self->emit(Wasm.Inst.End)
+    self->emit(Wasm.Inst.End)
+    self->emitUnit
+  }
   | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }
 }
@@ -284,7 +310,7 @@ let compile = (prog: array<CoreDecl.t>): Wasm.Module.t => {
 
   self.funcs->Array.forEach(f => {
     let (sig, body) = f->Func.toWasmFunc
-    let _ = self.mod->Wasm.Module.addFunc(f.name, sig, body)
+    let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)
   })
 
   self.mod
