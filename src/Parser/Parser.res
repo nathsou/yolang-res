@@ -1,7 +1,10 @@
 open Combinators
 open Expr
+open Decl
 open Belt
 open Token
+
+// expressions
 
 // precedence from highest to lowest
 let expr: parser<Expr.t> = ref(_ => None)
@@ -85,16 +88,6 @@ let ifThenElse = alt(
   equality,
 )
 
-let assignment = alt(
-  seq4(token(Keyword(Keywords.Let)), ident, token(Symbol(EqualSign)), expr)->map(((
-    _let,
-    x,
-    _eq,
-    e,
-  )) => LetExpr(x, e)),
-  ifThenElse,
-)
-
 let letIn = alt(
   seq6(
     token(Keyword(Keywords.Let)),
@@ -104,7 +97,7 @@ let letIn = alt(
     token(Keyword(Keywords.In)),
     expr,
   )->map(((_, x, _, e1, _, e2)) => LetInExpr(x, e1, e2)),
-  assignment,
+  ifThenElse,
 )
 
 let arguments = alt(parens(commas(ident)), ident->map(x => [x]))
@@ -116,19 +109,40 @@ let lambda = alt(
 
 block :=
   alt(
-    seq3(token(Symbol(Lbracket)), semiColons(expr), token(Symbol(Rbracket)))->map(((
+    seq3(token(Symbol(Lbracket)), semicolons(expr), token(Symbol(Rbracket)))->map(((
       _,
       exprs,
       _,
-    )) => BlockExpr(exprs->List.fromArray)),
+    )) => BlockExpr(exprs)),
     lambda,
   ).contents
 
 expr := block.contents
 
-let parse = str => {
-  // wrap the whole program inside a top-level block
-  Lexer.lex(Slice.fromString(`{${str}}`))->Option.flatMap(((tokens, _)) => {
-    expr.contents(Slice.make(tokens))
+// declarations
+
+let letDecl =
+  seq4(token(Keyword(Keywords.Let)), ident, token(Symbol(EqualSign)), expr)->map(((
+    _let,
+    x,
+    _eq,
+    e,
+  )) => LetDecl(x, e))
+
+let funDecl =
+  seq4(token(Keyword(Keywords.Fn)), ident, parens(commas(ident)), block)->map(((
+    _,
+    f,
+    args,
+    body,
+  )) => FuncDecl(f, args, body))
+
+let decl = funDecl
+
+let prog = many(decl)
+
+let parse = input => {
+  Lexer.lex(Slice.fromString(input))->Option.flatMap(((tokens, _)) => {
+    prog.contents(Slice.make(tokens))
   })
 }

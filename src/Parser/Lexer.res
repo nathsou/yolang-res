@@ -23,6 +23,7 @@ let keyword = anyOf([
   string("in")->map(_ => Keyword(Keywords.In)),
   string("if")->map(_ => Keyword(Keywords.If)),
   string("else")->map(_ => Keyword(Keywords.Else)),
+  string("fn")->map(_ => Keyword(Keywords.Fn)),
 ])
 
 let symbol = anyOf([

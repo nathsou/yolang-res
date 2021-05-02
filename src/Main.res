@@ -30,19 +30,37 @@ let decompile: string => string = %raw(`
 `)
 
 let run = input => {
-  Parser.parse(input)->Option.mapWithDefault("could not parse input", ((expr, _)) => {
-    let coreExpr = Core.fromExpr(expr)
-    switch Inferencer.inferCoreExprType(coreExpr) {
-    | Ok((_, _)) => {
-        let mod = Compiler.compile(coreExpr)
+  Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
+    let coreProg = prog->Array.map(Core.CoreDecl.from)
+    switch Inferencer.infer(coreProg) {
+    | Ok((_, subst)) => {
+        let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
         decompile(outFile)
       }
-    | Error(err) => `${coreExpr->Core.show}\n\n${err}`
+    | Error(err) => `${prog->Array.joinWith("\n\n", Decl.show)}\n\n${err}`
     }
   })
 }
 
-Js.log(run("(if (3 * (7 + 1) >= 22) { 1 } else { 2 }) + 4"))
+let prog = `
+
+  fn add1(a, b) {
+    let one = 1 in
+    a + b + one
+  }
+
+  fn main() {
+    let n = 7 in
+    let m = 1 in
+    if 3 * 7 > 22 {
+      n + m
+    } else {
+      n * m
+    }
+  }
+`
+
+Js.log(run(prog))

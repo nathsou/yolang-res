@@ -298,6 +298,8 @@ module Func = {
   module Locals = {
     type t = (int, ValueType.t)
 
+    type index = int
+
     // run-length sequence of types
     let fromTypes = (types: array<ValueType.t>): array<t> => {
       let rec aux = (types, acc) => {

@@ -19,7 +19,7 @@ type rec t =
   | LetExpr(string, t)
   | LetInExpr(string, t, t)
   | AppExpr(t, array<t>)
-  | BlockExpr(list<t>)
+  | BlockExpr(array<t>)
   | IfExpr(t, t, t)
 
 let rec show = expr =>
@@ -37,6 +37,5 @@ let rec show = expr =>
     }
   | IfExpr(cond, thenE, elseE) => `if ${show(cond)} ${show(thenE)} else ${show(elseE)}`
   | AppExpr(f, args) => `(${show(f)})(${args->Array.joinWith(", ", show)})`
-  | BlockExpr(exprs) =>
-    `{\n${exprs->List.toArray->Array.joinWith("\n", expr => `  ${show(expr)}`)}\n}`
+  | BlockExpr(exprs) => `{\n${exprs->Array.joinWith("\n", expr => `  ${show(expr)}`)}\n}`
   }

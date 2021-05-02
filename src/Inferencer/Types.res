@@ -10,6 +10,8 @@ module Env = {
   open Map.String
   type t = Map.String.t<polyTy>
 
+  let empty = Map.String.empty
+
   let add = (env: t, x, ty): t => env->set(x, ty)
   let addMono = (env: t, x, ty: monoTy): t => env->set(x, polyOf(ty))
   let remove = (env: t, x): t => env->remove(x)
@@ -23,11 +25,7 @@ let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])
 
 let funTy = tys => {
-  if tys->Array.length < 2 {
-    Js.Exn.raiseError("funTy called with less thant 2 arguments")
-  } else {
-    TyConst("Fun", tys)
-  }
+  TyConst("Fun", tys)
 }
 
 let rec freeTyVarsMonoTy = (ty: monoTy) => {

@@ -3,6 +3,8 @@ open Types
 
 type t = Map.Int.t<monoTy>
 
+let empty = Map.Int.empty
+
 let rec substMono = (s: t, ty) =>
   switch ty {
   | TyVar(x) =>

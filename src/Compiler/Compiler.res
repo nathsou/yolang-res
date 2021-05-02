@@ -1,4 +1,5 @@
 open Belt
+open Core
 
 module Local = {
   type t = {
@@ -26,23 +27,54 @@ module Func = {
   type t = {
     name: string,
     locals: array<Local.t>,
-    params: array<Types.monoTy>,
+    params: array<(string, Types.monoTy)>,
     ret: Types.monoTy,
     instructions: array<Wasm.Inst.t>,
+  }
+
+  let make = (name, params, ret): t => {
+    let self: t = {
+      name: name,
+      locals: [],
+      params: params,
+      ret: ret,
+      instructions: [],
+    }
+
+    self
   }
 
   let emit = (self: t, inst: Wasm.Inst.t): unit => {
     let _ = self.instructions->Js.Array2.push(inst)
   }
 
+  let addLocal = (
+    self: t,
+    name: string,
+    ty: Types.monoTy,
+    scopeDepth: int,
+  ): Wasm.Func.Locals.index => {
+    let _ = self.locals->Js.Array2.push(Local.make(name, scopeDepth, ty))
+    self.params->Array.length + self.locals->Array.length - 1
+  }
+
+  let findLocal = (self: t, name: string): Wasm.Func.Locals.index => {
+    switch self.params->Array.getIndexBy(((x, _)) => x == name) {
+    | Some(idx) => idx
+    | None =>
+      switch self.locals->Array.getIndexBy(local => local.name == name) {
+      | Some(idx) => self.params->Array.length + idx
+      | None => Js.Exn.raiseError(`findLocal: ${name} not found`)
+      }
+    }
+  }
+
   let toWasmFunc = (self: t): Wasm.Func.t => {
     let sig = Wasm.Func.Signature.make(
-      self.params->Array.map(wasmValueTyOf),
+      self.params->Array.map(((_, xTy)) => xTy->wasmValueTyOf),
       Some(self.ret->wasmValueTyOf),
     )
-
     let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
-
     let body = Wasm.Func.Body.make(locals, self.instructions)
 
     Wasm.Func.make(sig, body)
@@ -51,20 +83,41 @@ module Func = {
 
 type t = {
   mod: Wasm.Module.t,
-  funcs: MutableStack.t<Func.t>,
-  mutable localCount: int,
+  funcs: array<Func.t>,
   mutable scopeDepth: int,
 }
 
-let emit = (self: t, inst: Wasm.Inst.t): unit => {
-  switch self.funcs->MutableStack.top {
-  | Some(f) => f->Func.emit(inst)
-  | None => Js.Exn.raiseError(`tried to emit an instruction on an empty function stack`)
+let getCurrentFuncExn = (self: t) => {
+  switch self.funcs->Array.get(self.funcs->Array.length - 1) {
+  | Some(f) => f
+  | None => Js.Exn.raiseError(`called getFuncExn on an empty function list`)
   }
 }
 
-let rec compileExpr = (self: t, expr: Core.t): unit => {
-  open Core
+let emit = (self: t, inst: Wasm.Inst.t): unit => {
+  self->getCurrentFuncExn->Func.emit(inst)
+}
+
+let beginScope = (self: t) => {
+  self.scopeDepth = self.scopeDepth + 1
+}
+
+let endScope = (self: t) => {
+  self.scopeDepth = self.scopeDepth - 1
+}
+
+let declareLocalVar = (self: t, name: string, ty: Types.monoTy): unit => {
+  let f = self->getCurrentFuncExn
+  let localIndex = f->Func.addLocal(name, ty, self.scopeDepth)
+  self->emit(Wasm.Inst.SetLocal(localIndex))
+}
+
+let resolveLocalVar = (self: t, name: string): Wasm.Func.Locals.index => {
+  let f = self->getCurrentFuncExn
+  f->Func.findLocal(name)
+}
+
+let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(_, c) => {
       let inst = switch c {
@@ -99,11 +152,11 @@ let rec compileExpr = (self: t, expr: Core.t): unit => {
       }
     | Token.BinOp.Eq =>
       switch (lhs, rhs) {
-      | (Core.CoreConstExpr(_, Expr.Const.IntConst(0)), _) => {
+      | (CoreExpr.CoreConstExpr(_, Expr.Const.IntConst(0)), _) => {
           self->compileExpr(rhs)
           self->emit(Wasm.Inst.EqzI32)
         }
-      | (_, Core.CoreConstExpr(_, Expr.Const.IntConst(0))) => {
+      | (_, CoreExpr.CoreConstExpr(_, Expr.Const.IntConst(0))) => {
           self->compileExpr(lhs)
           self->emit(Wasm.Inst.EqzI32)
         }
@@ -140,47 +193,57 @@ let rec compileExpr = (self: t, expr: Core.t): unit => {
       }
     | _ => Js.Exn.raiseError(`compileExpr: binop '${Token.BinOp.show(op)}' not handled`)
     }
-  | CoreBlockExpr(_, exprs) => exprs->Js.Array2.forEach(self->compileExpr)
-  | CoreIfExpr(_, cond, thenE, elseE) => {
+  | CoreBlockExpr(_, exprs) => {
+      self->beginScope
+      exprs->Js.Array2.forEach(self->compileExpr)
+      self->endScope
+    }
+  | CoreIfExpr(_, cond, thenExpr, elseExpr) => {
       self->compileExpr(cond)
       self->emit(Wasm.Inst.If(Wasm.BlockReturnType.I32))
-      self->compileExpr(thenE)
+      self->compileExpr(thenExpr)
       self->emit(Wasm.Inst.Else)
-      self->compileExpr(elseE)
+      self->compileExpr(elseExpr)
       self->emit(Wasm.Inst.End)
     }
-
-  | _ => Js.Exn.raiseError(`compileExpr: '${Core.show(expr)}' not handled`)
+  | CoreLetInExpr(_, (x, xTy), valExpr, inExpr) => {
+      self->compileExpr(valExpr)
+      self->declareLocalVar(x, xTy)
+      self->compileExpr(inExpr)
+    }
+  | CoreVarExpr(_, x) => self->emit(Wasm.Inst.GetLocal(self->resolveLocalVar(x)))
+  | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }
 }
 
-let addFunc = (self: t, func: Func.t): Wasm.Func.index => {
-  self.mod->Wasm.Module.addFuncMut(func->Func.toWasmFunc)
+let compileDecl = (self: t, decl: CoreDecl.t) => {
+  open CoreDecl
+
+  switch decl {
+  | CoreLetDecl((x, xTy), val) => {
+      self->compileExpr(val)
+      let _ = self->declareLocalVar(x, xTy)
+    }
+  | CoreFuncDecl((f, _), args, body) => {
+      let func = Func.make(f, args, CoreExpr.tyVarOf(body))
+      let _ = self.funcs->Js.Array2.push(func)
+
+      self->compileExpr(body)
+    }
+  }
 }
 
-let compile = (expr: Core.t): Wasm.Module.t => {
-  let funcs = MutableStack.make()
-  let f: Func.t = {
-    name: "main",
-    locals: [],
-    params: [],
-    ret: Types.unitTy,
-    instructions: [],
-  }
-
-  funcs->MutableStack.push(f)
-
+let compile = (prog: array<CoreDecl.t>): Wasm.Module.t => {
   let self = {
     mod: Wasm.Module.make(),
-    funcs: funcs,
-    localCount: 0,
+    funcs: [],
     scopeDepth: 0,
   }
 
-  self->compileExpr(expr)
+  prog->Array.forEach(self->compileDecl)
 
-  self.funcs->MutableStack.forEach(f => {
-    let _ = self->addFunc(f)
+  self.funcs->Array.forEach(f => {
+    let _ = self.mod->Wasm.Module.addFuncMut(f->Func.toWasmFunc)
   })
 
   self.mod

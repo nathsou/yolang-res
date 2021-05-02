@@ -31,17 +31,17 @@ let binOpTy = (op: Token.BinOp.t): polyTy => {
   }
 }
 
-let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: Core.t, tau: monoTy): result<
+let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: monoTy): result<
   Subst.t,
   string,
 > => {
   collectCoreExprTypeSubsts(env, expr)->Result.flatMap(sig => {
-    unify(substMono(sig, tau), substMono(sig, tyVarOf(expr)))->Result.map(sig2 =>
+    unify(substMono(sig, tau), substMono(sig, CoreExpr.tyVarOf(expr)))->Result.map(sig2 =>
       substCompose(sig2, sig)
     )
   })
 }
-and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, string> => {
+and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, string> => {
   open Result
 
   switch expr {
@@ -58,7 +58,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, stri
       let sigAGamma = substEnv(sigA, env)
       collectCoreExprTypeSubsts(sigAGamma, b)->flatMap(sigB => {
         let sigBA = substCompose(sigB, sigA)
-        let opTy = substMono(sigBA, funTy([tyVarOf(a), tyVarOf(b), tau]))
+        let opTy = substMono(sigBA, funTy([CoreExpr.tyVarOf(a), CoreExpr.tyVarOf(b), tau]))
         let tau' = Context.freshInstance(binOpTy(op))
         unify(opTy, tau')->map(sig => substCompose(sig, sigBA))
       })
@@ -77,14 +77,14 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, stri
       ->Result.flatMap(((sig, _)) => {
         let lastTau = switch exprs->get(exprs->length - 1) {
         | None => unitTy
-        | Some(e) => tyVarOf(e)
+        | Some(e) => CoreExpr.tyVarOf(e)
         }
 
         unify(tau, lastTau)->Result.map(sig2 => substCompose(sig2, sig))
       })
     }
   | CoreLetInExpr(tau, (x, tauX), e1, e2) => {
-      let tau1 = tyVarOf(e1)
+      let tau1 = CoreExpr.tyVarOf(e1)
       collectCoreExprTypeSubsts(env, e1)->flatMap(sig1 => {
         let sig1Gamma = substEnv(sig1, env)
         let sig1Tau1 = substMono(sig1, tau1)
@@ -131,7 +131,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, stri
       })
     })
   | CoreFuncExpr(tau, args, body) => {
-      let tauRet = tyVarOf(body)
+      let tauRet = CoreExpr.tyVarOf(body)
       let gammaArgs = args->Array.reduce(env, (acc, (x, xTy)) => acc->Env.addMono(x, xTy))
       let fTy = funTy(Array.concat(args->Array.map(((_, ty)) => ty), [tauRet]))
       collectCoreExprTypeSubsts(gammaArgs, body)->flatMap(sig => {
@@ -141,7 +141,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, stri
       })
     }
   | CoreAppExpr(tau, lhs, args) => {
-      let argsTy = args->Array.map(tyVarOf)
+      let argsTy = args->Array.map(CoreExpr.tyVarOf)
       let fTy = funTy(Array.concat(argsTy, [tau]))
       collectCoreExprTypeSubstsWith(env, lhs, fTy)
       ->flatMap(sig1 => {
@@ -164,6 +164,41 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: Core.t): result<Subst.t, stri
 let inferCoreExprType = expr => {
   let env = Map.String.empty
   collectCoreExprTypeSubsts(env, expr)->Result.map(subst => {
-    (substMono(subst, tyVarOf(expr)), subst)
+    (substMono(subst, CoreExpr.tyVarOf(expr)), subst)
+  })
+}
+
+let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
+  open CoreDecl
+
+  switch decl {
+  | CoreLetDecl((x, xTy), val) => {
+      let tau = Context.freshTyVar()
+      collectCoreExprTypeSubsts(
+        env,
+        CoreExpr.CoreLetInExpr(
+          tau,
+          (x, xTy),
+          val,
+          CoreExpr.CoreBlockExpr(Context.freshTyVar(), []),
+        ),
+      )->Result.map(sig => (substEnv(sig, env->Env.addMono(x, substMono(sig, xTy))), sig))
+    }
+  | CoreFuncDecl((f, fTy), args, body) => {
+      let tau = Context.freshTyVar()
+      collectCoreExprTypeSubstsWith(
+        env,
+        CoreExpr.CoreFuncExpr(tau, args, body),
+        fTy,
+      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f, tau)), sig))
+    }
+  }
+}
+
+let infer = (prog: array<CoreDecl.t>): result<(Env.t, Subst.t), string> => {
+  prog->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
+    acc->Result.flatMap(((envn, sign)) =>
+      registerDecl(envn, decl)->Result.map(((env, sig)) => (env, substCompose(sig, sign)))
+    )
   })
 }
