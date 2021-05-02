@@ -283,7 +283,8 @@ let compile = (prog: array<CoreDecl.t>): Wasm.Module.t => {
   prog->Array.forEach(self->compileDecl)
 
   self.funcs->Array.forEach(f => {
-    let _ = self.mod->Wasm.Module.addFunc(f->Func.toWasmFunc)
+    let (sig, body) = f->Func.toWasmFunc
+    let _ = self.mod->Wasm.Module.addFunc(f.name, sig, body)
   })
 
   self.mod

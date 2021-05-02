@@ -352,7 +352,7 @@ module TypeSection = {
 
   let make = (): t => []
 
-  let addMut = (self: t, signature: Func.Signature.t): Func.Signature.index => {
+  let add = (self: t, signature: Func.Signature.t): Func.Signature.index => {
     switch self->Array.getIndexBy(sig => sig == signature) {
     | Some(idx) => idx
     | None => {
@@ -377,7 +377,7 @@ module FuncSection = {
 
   let make = (): t => []
 
-  let addSignatureMut = (self: t, signatureIndex: Func.Signature.index) => {
+  let addSignature = (self: t, signatureIndex: Func.Signature.index) => {
     let _ = self->Js.Array2.push(signatureIndex)
     self->Array.length - 1
   }
@@ -391,7 +391,7 @@ module CodeSection = {
 
   let make = (): t => []
 
-  let addFuncMut = (self: t, f): Func.index => {
+  let addFunc = (self: t, f): Func.index => {
     let _ = self->Js.Array2.push(f)
     self->Array.length - 1
   }
@@ -401,10 +401,56 @@ module CodeSection = {
   }
 }
 
+module String = {
+  let encode = (str: string): Vec.t => {
+    Vec.encode(Js.String.split("", str)->Array.map(c => Int.fromFloat(Js.String.charCodeAt(0, c))))
+  }
+}
+
+module ExportEntry = {
+  module ExternalKind = {
+    type t = Func | Table | Memory | Global
+
+    let encode = (kind: t): Vec.t => [switch kind {
+      | Func => 0
+      | Table => 1
+      | Memory => 2
+      | Global => 3
+    }]
+  }
+
+  type t = {
+    name: string,
+    kind: ExternalKind.t,
+    index: int
+  }
+
+  let make = (name, kind, index): t => { name, kind, index }
+
+  let encode = ({name, kind, index}: t): Vec.t => {
+    Array.concatMany([name->String.encode, kind->ExternalKind.encode, uleb128(index)])
+  }
+}
+
+module ExportSection = {
+  type t = array<ExportEntry.t>
+
+  let make = (): t => []
+
+  let addExport = (self: t, exp: ExportEntry.t): unit => {
+    let _ = self->Js.Array2.push(exp)
+  }
+
+  let encode = (self: t): Vec.t => {
+    Section.encode(Section.Export, Vec.encodeMany(self->Array.map(ExportEntry.encode)))
+  }
+}
+
 module Module = {
   type t = {
     typeSection: TypeSection.t,
     funcSection: FuncSection.t,
+    exportSection: ExportSection.t,
     codeSection: CodeSection.t,
     importsCount: int,
   }
@@ -412,14 +458,18 @@ module Module = {
   let make = (): t => {
     typeSection: TypeSection.make(),
     funcSection: FuncSection.make(),
+    exportSection: ExportSection.make(),
     codeSection: CodeSection.make(),
     importsCount: 0,
   }
 
-  let addFunc = (self: t, (sig, body): Func.t): Func.index => {
-    let sigIndex = self.typeSection->TypeSection.addMut(sig)
-    let _ = self.funcSection->FuncSection.addSignatureMut(sigIndex)
-    self.codeSection->CodeSection.addFuncMut(body) + self.importsCount
+  let addFunc = (self: t, name: string, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
+    let sigIndex = self.typeSection->TypeSection.add(sig)
+    let _ = self.funcSection->FuncSection.addSignature(sigIndex)
+    let funcIndex = self.codeSection->CodeSection.addFunc(body) + self.importsCount
+    self.exportSection->ExportSection.addExport(ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex))
+
+    funcIndex
   }
 
   let encode = (self: t): Vec.t => {
@@ -427,7 +477,8 @@ module Module = {
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
       self.typeSection->TypeSection.encode,
       self.funcSection->FuncSection.encode,
-      self.codeSection->CodeSection.encode,
+      self.exportSection->ExportSection.encode,
+      self.codeSection->CodeSection.encode
     ])
   }
 }

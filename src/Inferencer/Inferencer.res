@@ -131,9 +131,9 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         switch lastExpr {
         | Some(expr) =>
           collectCoreExprTypeSubsts(substEnv(sig, env), expr)->Result.flatMap(sig2 => {
-            let retTau = lastExpr->Option.mapWithDefault(unitTy, CoreExpr.tyVarOf)
+            let retTy = CoreExpr.tyVarOf(expr)
             let sig21 = substCompose(sig2, sig)
-            unify(substMono(sig21, tau), substMono(sig21, retTau))->Result.map(sig3 =>
+            unify(substMono(sig21, tau), substMono(sig21, retTy))->Result.map(sig3 =>
               substCompose(sig3, sig21)
             )
           })

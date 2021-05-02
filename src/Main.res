@@ -1,14 +1,6 @@
 open Belt
 
 let writeModule = (mod, outFile) => {
-  //   let instanciate: Wasm.Vec.t => Js.Promise.t<'a> = %raw(`
-  //   function(bytes) {
-  //     return WebAssembly.compile(Uint8Array.from(bytes).buffer)
-  //       .then(module => new WebAssembly.Instance(module, {}))
-  //       .then(results => results.instance);
-  //   }
-  // `)
-
   let writeBytesSync: (string, Wasm.Vec.t) => unit = %raw(`
     function(path, bytes) {
       require('fs').writeFileSync(path, Uint8Array.from(bytes), 'binary');
@@ -21,6 +13,21 @@ let writeModule = (mod, outFile) => {
 
   let bytes = mod->Wasm.Module.encode
   writeBytesSync(outFile, bytes)
+}
+
+let runModule = mod => {
+  let instanciate: Wasm.Vec.t => Js.Promise.t<'a> = %raw(`
+    function(bytes) {
+      return WebAssembly.compile(Uint8Array.from(bytes).buffer)
+        .then(module => new WebAssembly.Instance(module, {}))
+        .then(instance => instance.exports.main);
+    }
+  `)
+
+  let _ = instanciate(mod->Wasm.Module.encode)->Js.Promise.then_(mainFn => {
+    Js.log(mainFn())
+    Js.Promise.resolve(())
+  }, _)
 }
 
 let decompile: string => string = %raw(`
@@ -50,6 +57,7 @@ let run = input => {
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
+        let _ = runModule(mod)
         decompile(outFile)
       }
     | Error(err) => `${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`
@@ -63,7 +71,7 @@ let prog = `
     {
       let b = 7;
       {
-        let a = 1;
+        let a = a + 1;
         a * b
       }
     }
