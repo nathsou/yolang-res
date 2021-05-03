@@ -15,6 +15,15 @@ let satBy = (f: Token.t => option<'a>): parser<'a> => {
   )
 }
 
+let keepBy = (p: parser<'a>, f: 'a => option<'b>): parser<'b> => {
+  ref(tokens =>
+    switch p.contents(tokens) {
+      | Some((a, rem)) => f(a)->Option.map(b => (b, rem))
+      | None => None
+    }
+  )
+}
+
 let token = (t: Token.t) => sat(t2 => t2 == t)
 
 let map = (p: parser<'a>, f: 'a => 'b): parser<'b> => {

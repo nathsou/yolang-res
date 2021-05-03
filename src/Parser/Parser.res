@@ -124,11 +124,17 @@ let assignment = alt(
   lambda,
 )
 
+let implicitStms = keepBy(expr, expr => switch expr {
+  | Ast.IfExpr(_, _, _) => Some(Ast.ExprStmt(expr))
+  | Ast.WhileExpr(_, _) => Some(Ast.ExprStmt(expr))
+  | _ => None
+})
+
 block :=
   alt((
     seq4(
       token(Symbol(Lbracket)),
-      many(stmt),
+      many(alt(stmt, implicitStms)),
       optional(expr),
       token(Symbol(Rbracket)),
     )->map(((_, stmts, lastExpr, _)) => Ast.BlockExpr(stmts, lastExpr))

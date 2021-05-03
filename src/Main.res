@@ -39,11 +39,12 @@ let decompile: string => string = %raw(`
 let run = input => {
   Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
+      Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
 
-        Js.log(mod->Wasm.Module.show ++ "\n\n")
+        // Js.log(mod->Wasm.Module.show ++ "\n\n")
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
