@@ -174,22 +174,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->compileExpr(rhs)
         self->emit(Wasm.Inst.DivI32Unsigned)
       }
-    | Token.BinOp.Eq =>
-      switch (lhs, rhs) {
-      | (CoreConstExpr(_, Ast.Expr.Const.U32Const(0)), _) => {
-          self->compileExpr(rhs)
-          self->emit(Wasm.Inst.EqzI32)
-        }
-      | (_, CoreConstExpr(_, Ast.Expr.Const.U32Const(0))) => {
-          self->compileExpr(lhs)
-          self->emit(Wasm.Inst.EqzI32)
-        }
-      | _ => {
-          self->compileExpr(lhs)
-          self->compileExpr(rhs)
-          self->emit(Wasm.Inst.EqI32)
-        }
-      }
+    | Token.BinOp.Eq => {
+        self->compileExpr(lhs)
+        self->compileExpr(rhs)
+        self->emit(Wasm.Inst.EqI32)
+    }
     | Token.BinOp.Neq => {
         self->compileExpr(lhs)
         self->compileExpr(rhs)
@@ -264,7 +253,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     self->emit(Wasm.Inst.EqzI32)
     self->emit(Wasm.Inst.BranchIf(1))
     self->compileExpr(body)
-    self->emit(Wasm.Inst.Drop) // todo optimize?
+    self->emit(Wasm.Inst.Drop)
     self->emit(Wasm.Inst.Branch(0))
     self->emit(Wasm.Inst.End)
     self->emit(Wasm.Inst.End)
