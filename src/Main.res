@@ -39,21 +39,11 @@ let decompile: string => string = %raw(`
 let run = input => {
   Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
-        Js.log(
-          coreProg
-          ->Array.map(Inferencer.rewriteDecl)
-          ->Array.joinWith("\n\n", d => Core.CoreDecl.show(~subst=None, d)) ++ "\n\n",
-        )
-
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
-        // Js.log(
-        //   coreProg->Array.joinWith("\n\n", d =>
-        //     Core.CoreDecl.show(~subst=Some(subst), d)
-        //   ) ++ "\n\n",
-        // )
-
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
+
+        Js.log(mod->Wasm.Module.show ++ "\n\n")
 
         let outFile = "test.wasm"
         writeModule(mod, outFile)
@@ -66,17 +56,12 @@ let run = input => {
 }
 
 let prog = `
+  fn isEven(n) {
+    n % 2 == 0
+  }
+
   fn main() {
-    let mut i = 0;
-    let mut sum = 0;
-    let test = (3 * 7 + 1) / 2 != 12;
-
-    while i <= 1000 {
-      sum = sum + i * i;
-      i = i + 1;
-    };
-
-    sum
+    return isEven(7)
   }
 `
 

@@ -117,6 +117,21 @@ module Section = {
     }
 
   let encode = (section, bytes): Vec.t => Array.concat([section->id], Vec.encode(bytes))
+
+  let show = sec => "[" ++ switch sec {
+    | Custom => "custom"
+    | Type => "type"
+    | Import => "import"
+    | Function => "function"
+    | Table => "table"
+    | Memory => "memory"
+    | Global => "global"
+    | Export => "export"
+    | Start => "start"
+    | Element => "element"
+    | Code => "code"
+    | Data => "data"
+  } ++ " section]"
 }
 
 module ValueType = {
@@ -129,6 +144,13 @@ module ValueType = {
     | F32 => 0x7d
     | F64 => 0x7c
     }
+
+    let show = v => switch v {
+      | I32 => "i32"
+      | I64 => "i64"
+      | F32 => "f32"
+      | F64 => "f64"
+    } 
 }
 
 module BlockReturnType = {
@@ -142,6 +164,14 @@ module BlockReturnType = {
     | F64 => 0x7c
     | Void => 0x40
     }
+
+    let show = v => switch v {
+      | I32 => "i32"
+      | I64 => "i64"
+      | F32 => "f32"
+      | F64 => "f64"
+      | Void => "void"
+    } 
 }
 
 module Inst = {
@@ -160,6 +190,7 @@ module Inst = {
     | Return
     | GetLocal(int)
     | SetLocal(int)
+    | Call(int)
     | Drop
     | AddI32
     | SubI32
@@ -199,63 +230,78 @@ module Inst = {
     | GtI64Unsigned
     | GtF32
     | GtF64
+    | RemI32Signed
+    | RemI32Unsigned
 
-  let opcode = inst =>
+  let info = inst =>
     switch inst {
-    | ConstI32(_) => 0x41
-    | ConstI64(_) => 0x42
-    | ConstF32(_) => 0x43
-    | ConstF64(_) => 0x44
-    | If(_) => 0x04
-    | BranchIf(_) => 0x0d
-    | Branch(_) => 0x0c
-    | Block(_) => 0x02
-    | Loop(_) => 0x03
-    | Else => 0x05
-    | End => 0x0b
-    | Return => 0x0f
-    | GetLocal(_) => 0x20
-    | SetLocal(_) => 0x21
-    | Drop => 0x1a
-    | AddI32 => 0x6a
-    | SubI32 => 0x6b
-    | MulI32 => 0x6c
-    | DivI32Signed => 0x6d
-    | DivI32Unsigned => 0x6e
-    | EqzI32 => 0x45
-    | EqI32 => 0x46
-    | EqI64 => 0x51
-    | EqF32 => 0x5b
-    | EqF64 => 0x61
-    | NeI32 => 0x47
-    | NeI64 => 0x52
-    | NeF32 => 0x5c
-    | NeF64 => 0x62
-    | LeI32Signed => 0x4c
-    | LeI32Unsigned => 0x4d
-    | LeI64Signed => 0x57
-    | LeI64Unsigned => 0x58
-    | LeF32 => 0x5f
-    | LeF64 => 0x65
-    | GeI32Signed => 0x4e
-    | GeI32Unsigned => 0x4f
-    | GeI64Signed => 0x59
-    | GeI64Unsigned => 0x5a
-    | GeF32 => 0x60
-    | GeF64 => 0x66
-    | LtI32Signed => 0x48
-    | LtI32Unsigned => 0x49
-    | LtI64Signed => 0x53
-    | LtI64Unsigned => 0x54
-    | LtF32 => 0x5d
-    | LtF64 => 0x63
-    | GtI32Signed => 0x4a
-    | GtI32Unsigned => 0x4b
-    | GtI64Signed => 0x55
-    | GtI64Unsigned => 0x56
-    | GtF32 => 0x5e
-    | GtF64 => 0x64
+    | ConstI32(n) => (0x41, `i32.const ${Int.toString(n)}`)
+    | ConstI64(n) => (0x42, `i64.const ${Int.toString(n)}`)
+    | ConstF32(x) => (0x43, `i64.const ${Float.toString(x)}`)
+    | ConstF64(x) => (0x44, `i64.const ${Float.toString(x)}`)
+    | If(_) => (0x04, "if")
+    | BranchIf(lvl) => (0x0d, `br_if ${Int.toString(lvl)}`)
+    | Branch(lvl) => (0x0c, `br ${Int.toString(lvl)}`)
+    | Block(_) => (0x02, "block")
+    | Loop(_) => (0x03, "loop")
+    | Else => (0x05, "else")
+    | End => (0x0b, "end")
+    | Return => (0x0f, "return")
+    | GetLocal(idx) => (0x20, "local.get " ++ Int.toString(idx))
+    | SetLocal(idx) => (0x21, "local.get " ++ Int.toString(idx))
+    | Call(funcIdx) => (0x10, "call " ++ Int.toString(funcIdx))
+    | Drop => (0x1a, "drop")
+    | AddI32 => (0x6a, "i32.add")
+    | SubI32 => (0x6b, "i32.sub")
+    | MulI32 => (0x6c, "i32.mul")
+    | DivI32Signed => (0x6d, "i32.div_u")
+    | DivI32Unsigned => (0x6e, "i32.div_s")
+    | RemI32Signed => (0x6f, "i32.rem_s")
+    | RemI32Unsigned => (0x70, "i32.rem_s")
+    | EqzI32 => (0x45, "i32.eqz")
+    | EqI32 => (0x46, "i32.eq")
+    | EqI64 => (0x51, "i64.eq")
+    | EqF32 => (0x5b, "f32.eq")
+    | EqF64 => (0x61, "f64.eq")
+    | NeI32 => (0x47, "i32.ne")
+    | NeI64 => (0x52, "i64.ne")
+    | NeF32 => (0x5c, "f32.ne")
+    | NeF64 => (0x62, "f64.ne")
+    | LeI32Signed => (0x4c, "i32.le_s")
+    | LeI32Unsigned => (0x4d, "i32.le_u")
+    | LeI64Signed => (0x57, "i64.le_s")
+    | LeI64Unsigned => (0x58, "i64.le_u")
+    | LeF32 => (0x5f, "f32.le")
+    | LeF64 => (0x65, "f64.le")
+    | GeI32Signed => (0x4e, "i32.ge_s")
+    | GeI32Unsigned => (0x4f, "i32.ge_u")
+    | GeI64Signed => (0x59, "i64.ge_s")
+    | GeI64Unsigned => (0x5a, "i64.ge_u")
+    | GeF32 => (0x60, "f32.ge")
+    | GeF64 => (0x66, "f64.ge")
+    | LtI32Signed => (0x48, "i32.lt_s")
+    | LtI32Unsigned => (0x49, "i32.lt_u")
+    | LtI64Signed => (0x53, "i64.lt_s")
+    | LtI64Unsigned => (0x54, "i64.lt_u")
+    | LtF32 => (0x5d, "f32.lt")
+    | LtF64 => (0x63, "f64.lt")
+    | GtI32Signed => (0x4a, "i32.gt_s")
+    | GtI32Unsigned => (0x4b, "i32.gt_u")
+    | GtI64Signed => (0x55, "i64.gt_s")
+    | GtI64Unsigned => (0x56, "i64.gt_u")
+    | GtF32 => (0x5e, "f32.gt")
+    | GtF64 => (0x64, "f64.gt")
     }
+
+  let opcode = inst => {
+    let (opcode, _) = inst->info
+    opcode
+  }
+
+  let show = inst => {
+    let (_, fmt) = inst->info
+    fmt
+  }
 
   let encode = inst =>
     switch inst {
@@ -270,8 +316,10 @@ module Inst = {
     | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
     | BranchIf(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
+    | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx)) 
     | _ => [inst->opcode]
     }
+
 }
 
 module Func = {
@@ -294,6 +342,13 @@ module Func = {
         Vec.encode(params->Array.map(ValueType.encode)),
         Vec.encode(ret->Array.map(ValueType.encode)),
       ])
+    }
+
+    let show = (FuncSig(args, rets)) => {
+     let args = args->Array.joinWith(", ", ValueType.show)
+     let rets = rets->Array.joinWith(", ", ValueType.show)
+
+     `(${args}) -> ${rets}`
     }
   }
 
@@ -323,6 +378,10 @@ module Func = {
     let encode = ((count, typ)): Vec.t => {
       Array.concat(uleb128(count), [ValueType.encode(typ)])
     }
+
+    let show = ((count, ty): t) => {
+      `local ${Int.toString(count)} ${ValueType.show(ty)}`
+    } 
   }
 
   module Body = {
@@ -333,11 +392,18 @@ module Func = {
     let encode = ((locals, instructions): t): Vec.t => {
       let locals = Vec.encodeMany(locals->Array.map(Locals.encode))
       let instructions = Array.concatMany(
-        Array.concat(instructions, [Inst.End])->Array.map(Inst.encode),
+        instructions->Array.map(Inst.encode),
       )
 
       Array.concatMany([[locals->Array.length + instructions->Array.length], locals, instructions])
     }
+
+    let show = ((locals, insts): t) => {
+      let locals = locals->Array.joinWith("\n", Locals.show)
+      let body = insts->Array.joinWith("\n", Inst.show)
+
+      locals ++ "\n" ++ body
+    } 
   }
 
   type t = (Signature.t, Body.t)
@@ -365,6 +431,10 @@ module TypeSection = {
   let encode = (self: t): Vec.t => {
     Section.encode(Section.Type, Vec.encodeMany(self->Array.map(Func.Signature.encode)))
   }
+
+  let show = (self: t) => {
+    Section.show(Section.Type) ++ ":\n" ++ self->Array.joinWith("\n", Func.Signature.show)
+  }
 }
 
 module FuncSection = {
@@ -382,8 +452,13 @@ module FuncSection = {
     self->Array.length - 1
   }
 
-  let encode = (self: t) =>
+  let encode = (self: t) => {
     Section.encode(Section.Function, Vec.encodeMany(self->Array.map(uleb128)))
+  }
+
+  let show = (self: t) => {
+    Section.show(Section.Function) ++ ": " ++ self->Array.joinWith(", ", Int.toString)
+  }
 }
 
 module CodeSection = {
@@ -398,6 +473,10 @@ module CodeSection = {
 
   let encode = (bodies: t): Vec.t => {
     Section.encode(Section.Code, Vec.encodeMany(bodies->Array.map(Func.Body.encode)))
+  }
+
+  let show = (self: t) => {
+    Section.show(Section.Code) ++ ":\n" ++ self->Array.joinWith("\n", Func.Body.show)
   }
 }
 
@@ -417,6 +496,13 @@ module ExportEntry = {
       | Memory => 2
       | Global => 3
     }]
+
+    let show = kind => switch kind {
+      | Func => "func"
+      | Table => "table"
+      | Memory => "memory"
+      | Global => "global"
+    }
   }
 
   type t = {
@@ -429,6 +515,10 @@ module ExportEntry = {
 
   let encode = ({name, kind, index}: t): Vec.t => {
     Array.concatMany([name->String.encode, kind->ExternalKind.encode, uleb128(index)])
+  }
+
+  let show = ({name, kind, index}: t) => {
+    `export ${ExternalKind.show(kind)} ${name} (index: ${Int.toString(index)})`
   }
 }
 
@@ -443,6 +533,10 @@ module ExportSection = {
 
   let encode = (self: t): Vec.t => {
     Section.encode(Section.Export, Vec.encodeMany(self->Array.map(ExportEntry.encode)))
+  }
+
+  let show = (self: t) => {
+    Section.show(Section.Export) ++ ":\n" ++ self->Array.joinWith("\n", ExportEntry.show)
   }
 }
 
@@ -475,7 +569,6 @@ module Module = {
 
     funcIndex
   }
-  
 
   let encode = (self: t): Vec.t => {
     Array.concatMany([
@@ -485,5 +578,14 @@ module Module = {
       self.exportSection->ExportSection.encode,
       self.codeSection->CodeSection.encode
     ])
+  }
+
+  let show = (self: t) => {
+    [
+      self.typeSection->TypeSection.show,
+      self.funcSection->FuncSection.show,
+      self.exportSection->ExportSection.show,
+      self.codeSection->CodeSection.show
+    ]->Array.joinWith("\n\n", x => x)
   }
 }

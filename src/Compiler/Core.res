@@ -14,10 +14,11 @@ module CoreAst = {
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>)
     | CoreIfExpr(monoTy, expr, expr, expr)
     | CoreWhileExpr(expr, expr)
+    | CoreReturnExpr(expr)
   and decl = CoreFuncDecl((string, monoTy), array<(string, monoTy)>, expr)
   and stmt = CoreLetStmt((string, monoTy), bool, expr) | CoreExprStmt(expr)
 
-  let tyVarOfExpr = (expr: expr): monoTy => {
+  let rec tyVarOfExpr = (expr: expr): monoTy => {
     switch expr {
     | CoreConstExpr(tau, _) => tau
     | CoreBinOpExpr(tau, _, _, _) => tau
@@ -29,6 +30,7 @@ module CoreAst = {
     | CoreBlockExpr(tau, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
+    | CoreReturnExpr(expr) => tyVarOfExpr(expr) 
     }
   }
 
@@ -74,6 +76,7 @@ module CoreAst = {
         (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
     | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
+    | CoreReturnExpr(expr) => `return ${showExpr(expr)}`
     }
   }
 
@@ -135,6 +138,7 @@ module CoreAst = {
     | IfExpr(cond, thenE, elseE) =>
       CoreIfExpr(tau(), fromExpr(cond), fromExpr(thenE), fromExpr(elseE))
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
+    | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
     }
   }
 
@@ -171,6 +175,7 @@ module CoreAst = {
     | CoreIfExpr(tau, cond, thenE, elseE) =>
       CoreIfExpr(subst(tau), recCall(cond), recCall(thenE), recCall(elseE))
     | CoreWhileExpr(cond, body) => CoreWhileExpr(recCall(cond), recCall(body))
+    | CoreReturnExpr(expr) => CoreReturnExpr(recCall(expr))
     }
   }
 

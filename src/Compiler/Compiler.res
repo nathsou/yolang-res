@@ -95,6 +95,9 @@ module Func = {
     )
 
     let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
+
+    // every function body must end with an "end" optocde
+    let _ = self.instructions->Js.Array2.push(Wasm.Inst.End)
     let body = Wasm.Func.Body.make(locals, Optimizer.optimize(self.instructions))
 
     Wasm.Func.make(sig, body)
@@ -113,6 +116,10 @@ let getCurrentFuncExn = (self: t): Func.t => {
   | None => Js.Exn.raiseError(`called getFuncExn on an empty function list`)
   }
 }
+
+let findFuncIndexByName = (self: t, name: string): option<Wasm.Func.index> => {
+  self.funcs->Array.getIndexBy(f => f.name == name)
+} 
 
 let emit = (self: t, inst: Wasm.Inst.t): unit => {
   self->getCurrentFuncExn->Func.emit(inst)
@@ -204,7 +211,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->compileExpr(rhs)
         self->emit(Wasm.Inst.GeI32Unsigned)
       }
-    | _ => Js.Exn.raiseError(`compileExpr: binop '${Token.BinOp.show(op)}' not handled`)
+    | Token.BinOp.Mod => {
+        self->compileExpr(lhs)
+        self->compileExpr(rhs)
+        self->emit(Wasm.Inst.RemI32Unsigned)
+      }
     }
   | CoreBlockExpr(_, stmts, lastExpr) => {
       self->beginScope
@@ -258,6 +269,26 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     self->emit(Wasm.Inst.End)
     self->emit(Wasm.Inst.End)
     self->emitUnit
+  }
+  | CoreAppExpr(_, lhs, args) => {
+    switch lhs {
+      | CoreVarExpr(_, f) => {
+        switch self->findFuncIndexByName(f) {
+          | Some(idx) => {
+            args->Array.forEach(arg => {
+              self->compileExpr(arg)
+            })
+            self->emit(Wasm.Inst.Call(idx))
+          }
+          | None => Js.Exn.raiseError(`no function named "${f}" found`)
+        }
+      }
+      | _ => Js.Exn.raiseError("indirect function application not supported yet")
+    }
+  }
+  | CoreReturnExpr(expr) => {
+    self->compileExpr(expr)
+    self->emit(Wasm.Inst.Return)
   }
   | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }

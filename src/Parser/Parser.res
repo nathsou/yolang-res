@@ -5,7 +5,6 @@ open Token
 
 let decl: parser<Decl.t> = ref(_ => None)
 let expr: parser<Expr.t> = ref(_ => None)
-let exprWithoutBlock: parser<Expr.t> = ref(_ => None)
 let block: parser<Expr.t> = ref(_ => None)
 let stmt: parser<Stmt.t> = ref(_ => None)
 
@@ -127,18 +126,18 @@ let assignment = alt(
 )
 
 block :=
-  (
+  alt((
     seq4(
       token(Symbol(Lbracket)),
       many(stmt),
       optional(expr),
       token(Symbol(Rbracket)),
     )->map(((_, stmts, lastExpr, _)) => Ast.BlockExpr(stmts, lastExpr))
-  ).contents
+  ), assignment).contents
 
-expr := alt(block, assignment).contents
+let returnExpr = alt(then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)), block)
 
-exprWithoutBlock := assignment.contents
+expr := returnExpr.contents
 
 // statements
 

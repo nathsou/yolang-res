@@ -224,6 +224,9 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         collectCoreExprTypeSubstsWith(sig1Gamma, body, sig1TauBody)->map(sig2 => substCompose(sig2, sig1))
       })
     }
+    | CoreReturnExpr(ret) => {
+      collectCoreExprTypeSubsts(env, ret)
+    }
   }
 }
 
