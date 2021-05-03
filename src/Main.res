@@ -69,6 +69,7 @@ let prog = `
   fn main() {
     let mut i = 0;
     let mut sum = 0;
+    let test = (3 * 7 + 1) / 2;
 
     while i <= 1000 {
       sum = sum + i * i;

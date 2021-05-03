@@ -95,7 +95,7 @@ module Func = {
     )
 
     let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
-    let body = Wasm.Func.Body.make(locals, self.instructions)
+    let body = Wasm.Func.Body.make(locals, Optimizer.optimize(self.instructions))
 
     Wasm.Func.make(sig, body)
   }
