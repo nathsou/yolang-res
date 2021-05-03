@@ -125,19 +125,27 @@ let assignment = alt(
 )
 
 let implicitStms = keepBy(expr, expr => switch expr {
-  | Ast.IfExpr(_, _, _) => Some(Ast.ExprStmt(expr))
-  | Ast.WhileExpr(_, _) => Some(Ast.ExprStmt(expr))
+  | Ast.IfExpr(_, _, _) => Some((true, Ast.ExprStmt(expr)))
+  | Ast.WhileExpr(_, _) => Some((true, Ast.ExprStmt(expr)))
   | _ => None
 })
 
 block :=
-  alt((
+  alt(
     seq4(
       token(Symbol(Lbracket)),
-      many(alt(stmt, implicitStms)),
+      many(alt(stmt->map(s => (false, s)), implicitStms)),
       optional(expr),
       token(Symbol(Rbracket)),
-    )->map(((_, stmts, lastExpr, _)) => Ast.BlockExpr(stmts, lastExpr))
+    )->map(((_, stmts, lastExpr, _)) => {
+      let ss = stmts->Array.map(((_, s)) => s)
+      switch stmts->Array.get(stmts->Array.length - 1) {
+        | Some((isImplicit, Ast.ExprStmt(expr))) if isImplicit && lastExpr->Option.isNone => {
+          Ast.BlockExpr(ss->Array.slice(~offset=0, ~len=(stmts->Array.length - 2)), Some(expr))
+        }
+        | _ => Ast.BlockExpr(ss, lastExpr)
+      }
+    }
   ), assignment).contents
 
 let returnExpr = alt(then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)), block)

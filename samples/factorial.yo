@@ -1,0 +1,12 @@
+
+fn fact(n, acc) {
+  if n == 0 {
+    acc
+  } else {
+    fact(n - 1, n * acc)
+  }
+}
+
+fn main() {
+  fact(7, 1)
+}

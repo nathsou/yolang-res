@@ -39,7 +39,7 @@ let decompile: string => string = %raw(`
 let run = input => {
   Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
     let coreProg = prog->Array.map(Core.CoreDecl.from)
-      Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
+      // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
     switch Inferencer.infer(coreProg) {
     | Ok((_, subst)) => {
         let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
@@ -56,6 +56,6 @@ let run = input => {
   })
 }
 
-let prog = Node.Fs.readFileAsUtf8Sync("samples/primes.yo")
+let prog = Node.Fs.readFileAsUtf8Sync("samples/factorial.yo")
 
 Js.log(run(prog))

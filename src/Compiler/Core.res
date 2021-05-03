@@ -8,7 +8,7 @@ module CoreAst = {
     | CoreBinOpExpr(monoTy, expr, Token.BinOp.t, expr)
     | CoreVarExpr(monoTy, string)
     | CoreAssignmentExpr(string, expr)
-    | CoreFuncExpr(monoTy, array<(string, monoTy)>, expr)
+    | CoreFuncExpr(monoTy, option<(string, monoTy)>, array<(string, monoTy)>, expr)
     | CoreLetInExpr(monoTy, (string, monoTy), expr, expr)
     | CoreAppExpr(monoTy, expr, array<expr>)
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>)
@@ -24,7 +24,7 @@ module CoreAst = {
     | CoreBinOpExpr(tau, _, _, _) => tau
     | CoreVarExpr(tau, _) => tau
     | CoreAssignmentExpr(_, _) => unitTy
-    | CoreFuncExpr(tau, _, _) => tau
+    | CoreFuncExpr(tau, _, _, _) => tau
     | CoreLetInExpr(tau, _, _, _) => tau
     | CoreAppExpr(tau, _, _) => tau
     | CoreBlockExpr(tau, _, _) => tau
@@ -57,7 +57,7 @@ module CoreAst = {
       withType(tau, `(${show(a)} ${Token.BinOp.show(op)} ${show(b)})`)
     | CoreVarExpr(tau, x) => withType(tau, x)
     | CoreAssignmentExpr(x, val) => withType(tyVarOfExpr(val), `${x} = ${show(val)}`)
-    | CoreFuncExpr(tau, args, body) =>
+    | CoreFuncExpr(tau, _, args, body) =>
       withType(tau, `(${args->Array.joinWith(", ", ((x, _)) => x)}) -> ${show(body)}`)
     | CoreLetInExpr(tau, (x, _), valExpr, inExpr) =>
       withType(tau, `let ${x} = ${show(valExpr)} in\n${show(inExpr)}`)
@@ -123,8 +123,8 @@ module CoreAst = {
     | AssignmentExpr(x, val) => CoreAssignmentExpr(x, fromExpr(val))
     | FuncExpr(args, body) =>
       switch args {
-      | [] => CoreFuncExpr(tau(), [("_x", Context.freshTyVar())], fromExpr(body))
-      | _ => CoreFuncExpr(tau(), args->Array.map(x => (x, Context.freshTyVar())), fromExpr(body))
+      | [] => CoreFuncExpr(tau(), None, [("_x", Context.freshTyVar())], fromExpr(body))
+      | _ => CoreFuncExpr(tau(), None, args->Array.map(x => (x, Context.freshTyVar())), fromExpr(body))
       }
     | LetInExpr(x, e1, e2) =>
       CoreLetInExpr(tau(), (x, Context.freshTyVar()), fromExpr(e1), fromExpr(e2))
@@ -170,8 +170,8 @@ module CoreAst = {
     | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), recCall(a), op, recCall(b))
     | CoreVarExpr(tau, x) => CoreVarExpr(subst(tau), x)
     | CoreAssignmentExpr(x, val) => CoreAssignmentExpr(x, recCall(val))
-    | CoreFuncExpr(tau, args, e) =>
-      CoreFuncExpr(subst(tau), args->Array.map(((x, xTy)) => (x, subst(xTy))), recCall(e))
+    | CoreFuncExpr(tau, name, args, e) =>
+      CoreFuncExpr(subst(tau), name, args->Array.map(((x, xTy)) => (x, subst(xTy))), recCall(e))
     | CoreLetInExpr(tau, (x, xTy), e1, e2) =>
       CoreLetInExpr(subst(tau), (x, subst(xTy)), recCall(e1), recCall(e2))
     | CoreAppExpr(tau, lhs, args) => CoreAppExpr(subst(tau), recCall(lhs), args->Array.map(recCall))
