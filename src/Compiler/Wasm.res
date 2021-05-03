@@ -2,14 +2,8 @@ open Belt
 
 type byte = int
 
-module Vec = {
-  type t = array<byte>
-  let encode = (vec: t) => Array.concat([vec->Array.length], vec)
-  let encodeMany = (vecs: array<t>): t => Array.concat([vecs->Array.length], Array.concatMany(vecs))
-}
-
 // https://www.wikiwand.com/en/LEB128
-let uleb128 = (n: int): Vec.t => {
+let uleb128 = (n: int): array<byte> => {
   let bytes = []
 
   let rec aux = val => {
@@ -28,7 +22,7 @@ let uleb128 = (n: int): Vec.t => {
   bytes
 }
 
-let sleb128 = (val: int): Vec.t => {
+let sleb128 = (val: int): array<byte> => {
   let bytes = []
 
   let rec aux = val => {
@@ -45,6 +39,12 @@ let sleb128 = (val: int): Vec.t => {
 
   aux(val->lor(0))
   bytes
+}
+
+module Vec = {
+  type t = array<byte>
+  let encode = (vec: t) => Array.concat(uleb128(vec->Array.length), vec)
+  let encodeMany = (vecs: array<t>): t => Array.concat(uleb128(vecs->Array.length), Array.concatMany(vecs))
 }
 
 module F32 = {
@@ -257,7 +257,7 @@ module Inst = {
     | DivI32Signed => (0x6d, "i32.div_u")
     | DivI32Unsigned => (0x6e, "i32.div_s")
     | RemI32Signed => (0x6f, "i32.rem_s")
-    | RemI32Unsigned => (0x70, "i32.rem_s")
+    | RemI32Unsigned => (0x70, "i32.rem_u")
     | EqzI32 => (0x45, "i32.eqz")
     | EqI32 => (0x46, "i32.eq")
     | EqI64 => (0x51, "i64.eq")
@@ -476,7 +476,7 @@ module CodeSection = {
   }
 
   let show = (self: t) => {
-    Section.show(Section.Code) ++ ":\n" ++ self->Array.joinWith("\n", Func.Body.show)
+    Section.show(Section.Code) ++ ":\n" ++ self->Array.joinWith("\n\n", Func.Body.show)
   }
 }
 

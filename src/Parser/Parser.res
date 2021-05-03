@@ -80,13 +80,12 @@ let comparison = chainLeft(arith, comparisonOp, (a, op, b) => BinOpExpr(a, op, b
 let equality = chainLeft(comparison, eqOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let ifThenElse = alt(
-  seq5(token(Keyword(Keywords.If)), expr, block, token(Keyword(Keywords.Else)), block)->map(((
+  seq4(token(Keyword(Keywords.If)), expr, block, optional(then(token(Keyword(Keywords.Else)), block)))->map(((
     _if,
     cond,
     thenExpr,
-    _else,
-    elseExpr,
-  )) => Ast.IfExpr(cond, thenExpr, elseExpr)),
+    elseBranch
+  )) => Ast.IfExpr(cond, thenExpr, elseBranch->Option.map(((_, elseExpr)) => elseExpr))),
   equality,
 )
 

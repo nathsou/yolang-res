@@ -135,8 +135,13 @@ module CoreAst = {
       // | ([], Some(e1)) => fromExpr(e1)
       | _ => CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr))
       }
-    | IfExpr(cond, thenE, elseE) =>
-      CoreIfExpr(tau(), fromExpr(cond), fromExpr(thenE), fromExpr(elseE))
+    | IfExpr(cond, thenE, elseE) => {
+      // if the else expression is missing, replace it by unit
+      CoreIfExpr(tau(), fromExpr(cond), fromExpr(thenE), elseE->Option.mapWithDefault(
+        CoreConstExpr(unitTy, Ast.Const.UnitConst),
+        fromExpr
+      ))
+    }
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
     }

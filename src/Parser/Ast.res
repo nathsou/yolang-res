@@ -21,7 +21,7 @@ module Ast = {
     | LetInExpr(string, expr, expr)
     | AppExpr(expr, array<expr>)
     | BlockExpr(array<stmt>, option<expr>)
-    | IfExpr(expr, expr, expr)
+    | IfExpr(expr, expr, option<expr>)
     | WhileExpr(expr, expr)
     | ReturnExpr(expr)
   and stmt = LetStmt(string, bool, expr) | ExprStmt(expr)
@@ -40,8 +40,13 @@ module Ast = {
       | [x] => `${x} -> ${showExpr(body)}`
       | _ => `(${args->Array.joinWith(", ", x => x)}) -> ${showExpr(body)}`
       }
-    | IfExpr(cond, thenE, elseE) =>
-      `if ${showExpr(cond)} ${showExpr(thenE)} else ${showExpr(elseE)}`
+    | IfExpr(cond, thenExpr, elseExpr) => {
+        let head = `if ${showExpr(cond)} ${showExpr(thenExpr)}`
+        switch elseExpr {
+        | Some(elseExpr) => `${head} else ${showExpr(elseExpr)}`
+        | None => head
+      }
+    }
     | AppExpr(f, args) => `(${showExpr(f)})(${args->Array.joinWith(", ", showExpr)})`
     | BlockExpr(stmts, lastExpr) =>
       "{\n" ++

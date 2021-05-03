@@ -55,14 +55,6 @@ let run = input => {
   })
 }
 
-let prog = `
-  fn isEven(n) {
-    n % 2 == 0
-  }
-
-  fn main() {
-    return isEven(7)
-  }
-`
+let prog = Node.Fs.readFileAsUtf8Sync("samples/primes.yo")
 
 Js.log(run(prog))
