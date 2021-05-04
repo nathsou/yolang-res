@@ -30,5 +30,5 @@ let getReverseIndexBy = (arr: array<'a>, pred: 'a => bool): option<int> => {
     }
   }
 
-  res.contents 
+  res.contents
 }

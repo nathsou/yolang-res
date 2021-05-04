@@ -45,8 +45,8 @@ module Ast = {
         switch elseExpr {
         | Some(elseExpr) => `${head} else ${showExpr(elseExpr)}`
         | None => head
+        }
       }
-    }
     | AppExpr(f, args) => `(${showExpr(f)})(${args->Array.joinWith(", ", showExpr)})`
     | BlockExpr(stmts, lastExpr) =>
       "{\n" ++
@@ -55,7 +55,7 @@ module Ast = {
         lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
       )->Array.joinWith(";\n", str => `  ${str}`) ++ "}\n}"
     | WhileExpr(cond, body) => `while ${showExpr(cond)} ${showExpr(body)}`
-    | ReturnExpr(ret) => `return ${showExpr(ret)}` 
+    | ReturnExpr(ret) => `return ${showExpr(ret)}`
     }
 
   and showDecl = decl =>

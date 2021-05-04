@@ -119,7 +119,7 @@ let getCurrentFuncExn = (self: t): Func.t => {
 
 let findFuncIndexByName = (self: t, name: string): option<Wasm.Func.index> => {
   self.funcs->Array.getIndexBy(f => f.name == name)
-} 
+}
 
 let emit = (self: t, inst: Wasm.Inst.t): unit => {
   self->getCurrentFuncExn->Func.emit(inst)
@@ -185,7 +185,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->compileExpr(lhs)
         self->compileExpr(rhs)
         self->emit(Wasm.Inst.EqI32)
-    }
+      }
     | Token.BinOp.Neq => {
         self->compileExpr(lhs)
         self->compileExpr(rhs)
@@ -229,7 +229,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->endScope
     }
   | CoreIfExpr(tau, cond, thenExpr, elseExpr) => {
-      let retTy = tau->wasmBlockRetTyOf 
+      let retTy = tau->wasmBlockRetTyOf
       self->compileExpr(cond)
       self->emit(Wasm.Inst.If(retTy))
       self->compileExpr(thenExpr)
@@ -258,38 +258,34 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emitUnit
     }
   | CoreWhileExpr(cond, body) => {
-    self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
-    self->emit(Wasm.Inst.Loop(Wasm.BlockReturnType.Void))
-    self->compileExpr(cond)
-    self->emit(Wasm.Inst.EqzI32)
-    self->emit(Wasm.Inst.BranchIf(1))
-    self->compileExpr(body)
-    self->emit(Wasm.Inst.Drop)
-    self->emit(Wasm.Inst.Branch(0))
-    self->emit(Wasm.Inst.End)
-    self->emit(Wasm.Inst.End)
-    self->emitUnit
-  }
-  | CoreAppExpr(_, lhs, args) => {
-    switch lhs {
-      | CoreVarExpr(_, f) => {
-        switch self->findFuncIndexByName(f) {
-          | Some(idx) => {
-            args->Array.forEach(arg => {
-              self->compileExpr(arg)
-            })
-            self->emit(Wasm.Inst.Call(idx))
-          }
-          | None => Js.Exn.raiseError(`no function named "${f}" found`)
-        }
-      }
-      | _ => Js.Exn.raiseError("indirect function application not supported yet")
+      self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
+      self->emit(Wasm.Inst.Loop(Wasm.BlockReturnType.Void))
+      self->compileExpr(cond)
+      self->emit(Wasm.Inst.EqzI32)
+      self->emit(Wasm.Inst.BranchIf(1))
+      self->compileExpr(body)
+      self->emit(Wasm.Inst.Drop)
+      self->emit(Wasm.Inst.Branch(0))
+      self->emit(Wasm.Inst.End)
+      self->emit(Wasm.Inst.End)
+      self->emitUnit
     }
-  }
+  | CoreAppExpr(_, lhs, args) => switch lhs {
+    | CoreVarExpr(_, f) => switch self->findFuncIndexByName(f) {
+      | Some(idx) => {
+          args->Array.forEach(arg => {
+            self->compileExpr(arg)
+          })
+          self->emit(Wasm.Inst.Call(idx))
+        }
+      | None => Js.Exn.raiseError(`no function named "${f}" found`)
+      }
+    | _ => Js.Exn.raiseError("indirect function application not supported yet")
+    }
   | CoreReturnExpr(expr) => {
-    self->compileExpr(expr)
-    self->emit(Wasm.Inst.Return)
-  }
+      self->compileExpr(expr)
+      self->emit(Wasm.Inst.Return)
+    }
   | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
   }
 }

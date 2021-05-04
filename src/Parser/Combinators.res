@@ -18,8 +18,8 @@ let satBy = (f: Token.t => option<'a>): parser<'a> => {
 let keepBy = (p: parser<'a>, f: 'a => option<'b>): parser<'b> => {
   ref(tokens =>
     switch p.contents(tokens) {
-      | Some((a, rem)) => f(a)->Option.map(b => (b, rem))
-      | None => None
+    | Some((a, rem)) => f(a)->Option.map(b => (b, rem))
+    | None => None
     }
   )
 }

@@ -8,12 +8,10 @@ fn isPrime(n) {
   if isEven(n) { return false; }
 
   let mut i = 3;
-  let mut iSq = 9;
 
-  while iSq <= n {
+  while i * i <= n {
     if n % i == 0 { return false; }
 
-    iSq = iSq + 4 * (i + 1);
     i = i + 2;
   }
 

@@ -80,18 +80,25 @@ let comparison = chainLeft(arith, comparisonOp, (a, op, b) => BinOpExpr(a, op, b
 let equality = chainLeft(comparison, eqOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let ifThenElse = alt(
-  seq4(token(Keyword(Keywords.If)), expr, block, optional(then(token(Keyword(Keywords.Else)), block)))->map(((
-    _if,
+  seq4(
+    token(Keyword(Keywords.If)),
+    expr,
+    block,
+    optional(then(token(Keyword(Keywords.Else)), block)),
+  )->map(((_if, cond, thenExpr, elseBranch)) => Ast.IfExpr(
     cond,
     thenExpr,
-    elseBranch
-  )) => Ast.IfExpr(cond, thenExpr, elseBranch->Option.map(((_, elseExpr)) => elseExpr))),
+    elseBranch->Option.map(((_, elseExpr)) => elseExpr),
+  )),
   equality,
 )
 
 let whileExpr = alt(
-  seq3(token(Keyword(Keywords.While)), expr, block)->map(((_, cond, body)) => Ast.WhileExpr(cond, body)),
-  ifThenElse
+  seq3(token(Keyword(Keywords.While)), expr, block)->map(((_, cond, body)) => Ast.WhileExpr(
+    cond,
+    body,
+  )),
+  ifThenElse,
 )
 
 let letIn = alt(
@@ -124,11 +131,13 @@ let assignment = alt(
   lambda,
 )
 
-let implicitStms = keepBy(expr, expr => switch expr {
+let implicitStms = keepBy(expr, expr =>
+  switch expr {
   | Ast.IfExpr(_, _, _) => Some((true, Ast.ExprStmt(expr)))
   | Ast.WhileExpr(_, _) => Some((true, Ast.ExprStmt(expr)))
   | _ => None
-})
+  }
+)
 
 block :=
   alt(
@@ -140,15 +149,18 @@ block :=
     )->map(((_, stmts, lastExpr, _)) => {
       let ss = stmts->Array.map(((_, s)) => s)
       switch stmts->Array.get(stmts->Array.length - 1) {
-        | Some((isImplicit, Ast.ExprStmt(expr))) if isImplicit && lastExpr->Option.isNone => {
-          Ast.BlockExpr(ss->Array.slice(~offset=0, ~len=(stmts->Array.length - 2)), Some(expr))
-        }
-        | _ => Ast.BlockExpr(ss, lastExpr)
+      | Some((isImplicit, Ast.ExprStmt(expr))) if isImplicit && lastExpr->Option.isNone =>
+        Ast.BlockExpr(ss->Array.slice(~offset=0, ~len=stmts->Array.length - 2), Some(expr))
+      | _ => Ast.BlockExpr(ss, lastExpr)
       }
-    }
-  ), assignment).contents
+    }),
+    assignment,
+  ).contents
 
-let returnExpr = alt(then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)), block)
+let returnExpr = alt(
+  then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)),
+  block,
+)
 
 expr := returnExpr.contents
 

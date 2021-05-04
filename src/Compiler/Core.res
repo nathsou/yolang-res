@@ -30,7 +30,7 @@ module CoreAst = {
     | CoreBlockExpr(tau, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
-    | CoreReturnExpr(expr) => tyVarOfExpr(expr) 
+    | CoreReturnExpr(expr) => tyVarOfExpr(expr)
     }
   }
 
@@ -124,7 +124,8 @@ module CoreAst = {
     | FuncExpr(args, body) =>
       switch args {
       | [] => CoreFuncExpr(tau(), None, [("_x", Context.freshTyVar())], fromExpr(body))
-      | _ => CoreFuncExpr(tau(), None, args->Array.map(x => (x, Context.freshTyVar())), fromExpr(body))
+      | _ =>
+        CoreFuncExpr(tau(), None, args->Array.map(x => (x, Context.freshTyVar())), fromExpr(body))
       }
     | LetInExpr(x, e1, e2) =>
       CoreLetInExpr(tau(), (x, Context.freshTyVar()), fromExpr(e1), fromExpr(e2))
@@ -135,13 +136,13 @@ module CoreAst = {
       // | ([], Some(e1)) => fromExpr(e1)
       | _ => CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr))
       }
-    | IfExpr(cond, thenE, elseE) => {
-      // if the else expression is missing, replace it by unit
-      CoreIfExpr(tau(), fromExpr(cond), fromExpr(thenE), elseE->Option.mapWithDefault(
-        CoreConstExpr(unitTy, Ast.Const.UnitConst),
-        fromExpr
-      ))
-    }
+    | IfExpr(cond, thenE, elseE) => // if the else expression is missing, replace it by unit
+      CoreIfExpr(
+        tau(),
+        fromExpr(cond),
+        fromExpr(thenE),
+        elseE->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Const.UnitConst), fromExpr),
+      )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
     }

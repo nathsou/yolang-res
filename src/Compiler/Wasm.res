@@ -44,7 +44,8 @@ let sleb128 = (val: int): array<byte> => {
 module Vec = {
   type t = array<byte>
   let encode = (vec: t) => Array.concat(uleb128(vec->Array.length), vec)
-  let encodeMany = (vecs: array<t>): t => Array.concat(uleb128(vecs->Array.length), Array.concatMany(vecs))
+  let encodeMany = (vecs: array<t>): t =>
+    Array.concat(uleb128(vecs->Array.length), Array.concatMany(vecs))
 }
 
 module F32 = {
@@ -118,7 +119,9 @@ module Section = {
 
   let encode = (section, bytes): Vec.t => Array.concat([section->id], Vec.encode(bytes))
 
-  let show = sec => "[" ++ switch sec {
+  let show = sec =>
+    "[" ++
+    switch sec {
     | Custom => "custom"
     | Type => "type"
     | Import => "import"
@@ -131,7 +134,7 @@ module Section = {
     | Element => "element"
     | Code => "code"
     | Data => "data"
-  } ++ " section]"
+    } ++ " section]"
 }
 
 module ValueType = {
@@ -145,12 +148,13 @@ module ValueType = {
     | F64 => 0x7c
     }
 
-    let show = v => switch v {
-      | I32 => "i32"
-      | I64 => "i64"
-      | F32 => "f32"
-      | F64 => "f64"
-    } 
+  let show = v =>
+    switch v {
+    | I32 => "i32"
+    | I64 => "i64"
+    | F32 => "f32"
+    | F64 => "f64"
+    }
 }
 
 module BlockReturnType = {
@@ -165,13 +169,14 @@ module BlockReturnType = {
     | Void => 0x40
     }
 
-    let show = v => switch v {
-      | I32 => "i32"
-      | I64 => "i64"
-      | F32 => "f32"
-      | F64 => "f64"
-      | Void => "void"
-    } 
+  let show = v =>
+    switch v {
+    | I32 => "i32"
+    | I64 => "i64"
+    | F32 => "f32"
+    | F64 => "f64"
+    | Void => "void"
+    }
 }
 
 module Inst = {
@@ -316,10 +321,9 @@ module Inst = {
     | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
     | BranchIf(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
-    | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx)) 
+    | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
     | _ => [inst->opcode]
     }
-
 }
 
 module Func = {
@@ -345,10 +349,10 @@ module Func = {
     }
 
     let show = (FuncSig(args, rets)) => {
-     let args = args->Array.joinWith(", ", ValueType.show)
-     let rets = rets->Array.joinWith(", ", ValueType.show)
+      let args = args->Array.joinWith(", ", ValueType.show)
+      let rets = rets->Array.joinWith(", ", ValueType.show)
 
-     `(${args}) -> ${rets}`
+      `(${args}) -> ${rets}`
     }
   }
 
@@ -381,7 +385,7 @@ module Func = {
 
     let show = ((count, ty): t) => {
       `local ${Int.toString(count)} ${ValueType.show(ty)}`
-    } 
+    }
   }
 
   module Body = {
@@ -391,9 +395,7 @@ module Func = {
 
     let encode = ((locals, instructions): t): Vec.t => {
       let locals = Vec.encodeMany(locals->Array.map(Locals.encode))
-      let instructions = Array.concatMany(
-        instructions->Array.map(Inst.encode),
-      )
+      let instructions = Array.concatMany(instructions->Array.map(Inst.encode))
 
       Array.concatMany([[locals->Array.length + instructions->Array.length], locals, instructions])
     }
@@ -403,7 +405,7 @@ module Func = {
       let body = insts->Array.joinWith("\n", Inst.show)
 
       locals ++ "\n" ++ body
-    } 
+    }
   }
 
   type t = (Signature.t, Body.t)
@@ -490,28 +492,31 @@ module ExportEntry = {
   module ExternalKind = {
     type t = Func | Table | Memory | Global
 
-    let encode = (kind: t): Vec.t => [switch kind {
+    let encode = (kind: t): Vec.t => [
+      switch kind {
       | Func => 0
       | Table => 1
       | Memory => 2
       | Global => 3
-    }]
+      },
+    ]
 
-    let show = kind => switch kind {
+    let show = kind =>
+      switch kind {
       | Func => "func"
       | Table => "table"
       | Memory => "memory"
       | Global => "global"
-    }
+      }
   }
 
   type t = {
     name: string,
     kind: ExternalKind.t,
-    index: int
+    index: int,
   }
 
-  let make = (name, kind, index): t => { name, kind, index }
+  let make = (name, kind, index): t => {name: name, kind: kind, index: index}
 
   let encode = ({name, kind, index}: t): Vec.t => {
     Array.concatMany([name->String.encode, kind->ExternalKind.encode, uleb128(index)])
@@ -563,9 +568,16 @@ module Module = {
     self.codeSection->CodeSection.addFunc(body) + self.importsCount
   }
 
-  let addExportedFunc = (self: t, name: string, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
+  let addExportedFunc = (
+    self: t,
+    name: string,
+    sig: Func.Signature.t,
+    body: Func.Body.t,
+  ): Func.index => {
     let funcIndex = self->addFunc(sig, body)
-    self.exportSection->ExportSection.addExport(ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex))
+    self.exportSection->ExportSection.addExport(
+      ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex),
+    )
 
     funcIndex
   }
@@ -576,7 +588,7 @@ module Module = {
       self.typeSection->TypeSection.encode,
       self.funcSection->FuncSection.encode,
       self.exportSection->ExportSection.encode,
-      self.codeSection->CodeSection.encode
+      self.codeSection->CodeSection.encode,
     ])
   }
 
@@ -585,7 +597,7 @@ module Module = {
       self.typeSection->TypeSection.show,
       self.funcSection->FuncSection.show,
       self.exportSection->ExportSection.show,
-      self.codeSection->CodeSection.show
+      self.codeSection->CodeSection.show,
     ]->Array.joinWith("\n\n", x => x)
   }
 }

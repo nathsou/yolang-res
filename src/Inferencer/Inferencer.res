@@ -170,29 +170,13 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         })
       })
     })
-      // | CoreLetRecInExpr(tau, (f, tauF), (x, tauX), eVal, eIn) => {
-  //     let tauVal = tyVarOf(eVal)
-  //     let fTy = funTy([tauX, tauVal])
-  //     let gammaFX = env->Env.add(x, polyOf(tauX))->Env.add(f, polyOf(fTy))
-  //     collectCoreExprTypeSubsts(gammaFX, eVal)->flatMap(sig1 => {
-  //       let sig1FTy = substMono(sig1, fTy)
-  //       let sig1Tau = substMono(sig1, tau)
-  //       let sig1Gamma = substEnv(sig1, env)
-  //       let sig1FtyGen = generalizeTy(sig1Gamma, sig1FTy)
-  //       let sig1GammaFGen = sig1Gamma->Env.add(f, sig1FtyGen)
-  //       collectCoreExprTypeSubstsWith(sig1GammaFGen, eIn, sig1Tau)->flatMap(sig2 => {
-  //         let sig21 = substCompose(sig2, sig1)
-  //         unify(substMono(sig21, tauF), substMono(sig2, sig1FTy))->map(sig3 =>
-  //           substCompose(sig3, sig21)
-  //         )
-  //       })
-  //     })
-  //   }
+
   | CoreFuncExpr(tau, name, args, body) => {
       let tauRet = CoreExpr.tyVarOf(body)
       let gammaArgs = args->Array.reduce(env, (acc, (x, xTy)) => acc->Env.addMono(x, xTy))
       let fTy = funTy(Array.concat(args->Array.map(((_, ty)) => ty), [tauRet]))
-      let gammaFArgs = name->Option.mapWithDefault(gammaArgs, ((f, _)) => gammaArgs->Env.add(f, polyOf(fTy)))
+      let gammaFArgs =
+        name->Option.mapWithDefault(gammaArgs, ((f, _)) => gammaArgs->Env.add(f, polyOf(fTy)))
       collectCoreExprTypeSubsts(gammaFArgs, body)->flatMap(sig => {
         let sigFty = substMono(sig, fTy)
         let sigTau = substMono(sig, tau)
@@ -201,12 +185,12 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         unify(sigTau, sigFty)->flatMap(sig2 => {
           let sig21 = substCompose(sig2, sig)
 
-          Ok(sig21)          
+          Ok(sig21)
           // TODO: handle polymorphism
           // switch name {
           //   | Some((_, fTy)) => unify(substMono(sig21, fTy), substPoly(sig2, sigFtyGen))->map(sig3 => {
           //     substCompose(sig3, sig21)
-          //   }) 
+          //   })
           //   | None => Ok(sig21)
           // }
         })
@@ -230,17 +214,17 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       })
       ->map(((sig, _)) => sig)
     }
-    | CoreWhileExpr(cond, body) => {
+  | CoreWhileExpr(cond, body) => {
       let tauBody = CoreExpr.tyVarOf(body)
       collectCoreExprTypeSubsts(env, cond)->flatMap(sig1 => {
         let sig1TauBody = substMono(sig1, tauBody)
         let sig1Gamma = substEnv(sig1, env)
-        collectCoreExprTypeSubstsWith(sig1Gamma, body, sig1TauBody)->map(sig2 => substCompose(sig2, sig1))
+        collectCoreExprTypeSubstsWith(sig1Gamma, body, sig1TauBody)->map(sig2 =>
+          substCompose(sig2, sig1)
+        )
       })
     }
-    | CoreReturnExpr(ret) => {
-      collectCoreExprTypeSubsts(env, ret)
-    }
+  | CoreReturnExpr(ret) => collectCoreExprTypeSubsts(env, ret)
   }
 }
 
@@ -263,10 +247,11 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
   switch decl {
   | CoreFuncDecl((f, fTy), args, body) => {
       let tau = Context.freshTyVar()
-      collectCoreExprTypeSubstsWith(env, CoreFuncExpr(tau, Some((f, fTy)), args, body), fTy)->Result.map(sig => (
-        substEnv(sig, env->Env.addMono(f, tau)),
-        sig,
-      ))
+      collectCoreExprTypeSubstsWith(
+        env,
+        CoreFuncExpr(tau, Some((f, fTy)), args, body),
+        fTy,
+      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f, tau)), sig))
     }
   }
 }
