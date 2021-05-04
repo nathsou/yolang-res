@@ -169,18 +169,28 @@ expr := returnExpr.contents
 let exprStmt = then(expr, token(Symbol(Symbol.SemiColon)))->map(((expr, _)) => Ast.ExprStmt(expr))
 
 let letStmt = alt(
-  seq6(
+  seq5(
     token(Keyword(Keywords.Let)),
-    optional(token(Keyword(Keywords.Mut))),
     ident,
     token(Symbol(EqualSign)),
     expr,
     token(Symbol(Symbol.SemiColon)),
-  )->map(((_let, mut, x, _eq, e, _)) => Ast.LetStmt(x, mut->Option.isSome, e)),
+  )->map(((_let, x, _eq, e, _)) => Ast.LetStmt(x, false, e)),
   exprStmt,
 )
 
-stmt := letStmt.contents
+let mutStmt = alt(
+  seq5(
+    token(Keyword(Keywords.Mut)),
+    ident,
+    token(Symbol(EqualSign)),
+    expr,
+    token(Symbol(Symbol.SemiColon)),
+  )->map(((_, x, _eq, e, _)) => Ast.LetStmt(x, true, e)),
+  letStmt,
+)
+
+stmt := mutStmt.contents
 
 // declarations
 
