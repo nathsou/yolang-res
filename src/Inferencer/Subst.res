@@ -5,7 +5,7 @@ type t = Map.Int.t<monoTy>
 
 let empty = Map.Int.empty
 
-let rec substMono = (s: t, ty) =>
+let rec substMono = (s: t, ty: monoTy): monoTy =>
   switch ty {
   | TyVar(x) =>
     switch s->Map.Int.get(x) {

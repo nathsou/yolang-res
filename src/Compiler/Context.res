@@ -1,10 +1,20 @@
 open Belt
 
-type t = {mutable tyVarIndex: int, globals: HashMap.String.t<Types.polyTy>}
+type name = {
+  mutable name: string,
+  index: int,
+  mutable ty: Types.monoTy
+}
+
+type nameRef = ref<name>
+type renameMap = HashMap.Int.t<nameRef>
+
+type t = {mutable tyVarIndex: int, identifiers: array<string>, renaming: renameMap}
 
 let make = (): t => {
   tyVarIndex: 0,
-  globals: HashMap.String.make(~hintSize=1),
+  identifiers: [],
+  renaming: HashMap.Int.make(~hintSize=10)
 }
 
 // global context
@@ -24,6 +34,31 @@ let freshInstance = ((polyVars, ty): Types.polyTy): Types.monoTy => {
   Subst.substMono(Array.zip(polyVars, freshTyVars)->Map.Int.fromArray, ty)
 }
 
-let addGlobal = (self: t, name: string, ty: Types.polyTy): unit => {
-  self.globals->HashMap.String.set(name, ty)
+let freshIdentifier = (name: string): nameRef => {
+  let index = context.identifiers->Array.length
+  let _ = context.identifiers->Js.Array2.push(name)
+
+  let nameRef = ref({
+    name: name,
+    index: index,
+    ty: freshTyVar()
+  })
+
+  context.renaming->HashMap.Int.set(index, nameRef)
+
+  nameRef
+}
+
+let getIdentifier = (name: string): nameRef => {
+  switch context.identifiers->ArrayUtils.getReverseIndexBy(n => n == name)
+    ->Option.flatMap(index => context.renaming->HashMap.Int.get(index)) {
+      | Some(id) => id
+      | None => Js.Exn.raiseError(`unbound identifier "${name}"`) 
+    }
+}
+
+let substIdentifiers = (s: Subst.t): unit => {
+  context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
+    id.contents.ty = Subst.substMono(s, id.contents.ty)
+  })
 }

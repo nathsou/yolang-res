@@ -32,3 +32,19 @@ let getReverseIndexBy = (arr: array<'a>, pred: 'a => bool): option<int> => {
 
   res.contents
 }
+
+let getReverseBy = (arr: array<'a>, pred: 'a => bool): option<'a> => {
+  let res = ref(None)
+  let i = ref(arr->Array.length - 1)
+
+  while res.contents->Option.isNone && i.contents >= 0 {
+    let elem = arr->Array.getExn(i.contents)
+    if pred(elem) {
+      res := Some(elem)
+    } else {
+      i := i.contents - 1
+    }
+  }
+
+  res.contents
+}

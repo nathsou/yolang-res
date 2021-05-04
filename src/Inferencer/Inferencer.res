@@ -91,20 +91,21 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   | CoreConstExpr(tau, c) =>
     let tau' = Context.freshInstance(constTy(c))
     unify(tau, tau')
-  | CoreVarExpr(tau, x) =>
-    switch env->Env.get(x) {
-    | Some(ty) => unify(tau, Context.freshInstance(ty))
-    | None => Error(`unbound variable: "${x}"`)
+  | CoreVarExpr(x) =>
+    let x = x.contents
+    switch env->Env.get(x.name) {
+    | Some(ty) => unify(x.ty, Context.freshInstance(ty))
+    | None => Error(`unbound variable: "${x.name}"`)
     }
   | CoreAssignmentExpr(x, val) =>
-    switch env->Env.get(x) {
+    switch env->Env.get(x.contents.name) {
     | Some(ty) =>
       collectCoreExprTypeSubstsWith(env, val, Context.freshInstance(ty))->flatMap(sig1 =>
         unify(substMono(sig1, CoreExpr.tyVarOf(expr)), unitTy)->map(sig2 =>
           substCompose(sig2, sig1)
         )
       )
-    | None => Error(`unbound variable: "${x}"`)
+    | None => Error(`unbound variable: "${x.contents.name}"`)
     }
   | CoreBinOpExpr(tau, a, op, b) =>
     collectCoreExprTypeSubsts(env, a)->flatMap(sigA => {
@@ -141,17 +142,18 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         }
       })
     }
-  | CoreLetInExpr(tau, (x, tauX), e1, e2) => {
+  | CoreLetInExpr(tau, x, e1, e2) => {
+      let x = x.contents
       let tau1 = CoreExpr.tyVarOf(e1)
       collectCoreExprTypeSubsts(env, e1)->flatMap(sig1 => {
         let sig1Gamma = substEnv(sig1, env)
         let sig1Tau1 = substMono(sig1, tau1)
         let sig1Tau = substMono(sig1, tau)
-        let sig1Tau1Gen = generalizeTy(sig1Gamma->Env.remove(x), sig1Tau1)
-        let gammaX = sig1Gamma->Env.add(x, sig1Tau1Gen)
+        let sig1Tau1Gen = generalizeTy(sig1Gamma->Env.remove(x.name), sig1Tau1)
+        let gammaX = sig1Gamma->Env.add(x.name, sig1Tau1Gen)
         collectCoreExprTypeSubstsWith(gammaX, e2, sig1Tau)->flatMap(sig2 => {
           let sig21 = substCompose(sig2, sig1)
-          unify(substMono(sig21, tau1), substMono(sig21, tauX))->map(sig3 =>
+          unify(substMono(sig21, tau1), substMono(sig21, x.ty))->map(sig3 =>
             substCompose(sig3, sig21)
           )
         })
@@ -173,10 +175,10 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
 
   | CoreFuncExpr(tau, name, args, body) => {
       let tauRet = CoreExpr.tyVarOf(body)
-      let gammaArgs = args->Array.reduce(env, (acc, (x, xTy)) => acc->Env.addMono(x, xTy))
-      let fTy = funTy(Array.concat(args->Array.map(((_, ty)) => ty), [tauRet]))
+      let gammaArgs = args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
+      let fTy = funTy(Array.concat(args->Array.map(x => x.contents.ty), [tauRet]))
       let gammaFArgs =
-        name->Option.mapWithDefault(gammaArgs, ((f, _)) => gammaArgs->Env.add(f, polyOf(fTy)))
+        name->Option.mapWithDefault(gammaArgs, f => gammaArgs->Env.add(f.contents.name, polyOf(f.contents.ty)))
       collectCoreExprTypeSubsts(gammaFArgs, body)->flatMap(sig => {
         let sigFty = substMono(sig, fTy)
         let sigTau = substMono(sig, tau)
@@ -245,13 +247,13 @@ let inferCoreExprType = expr => {
 
 let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
   switch decl {
-  | CoreFuncDecl((f, fTy), args, body) => {
+  | CoreFuncDecl(f, args, body) => {
       let tau = Context.freshTyVar()
       collectCoreExprTypeSubstsWith(
         env,
-        CoreFuncExpr(tau, Some((f, fTy)), args, body),
-        fTy,
-      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f, tau)), sig))
+        CoreFuncExpr(tau, Some(f), args, body),
+        f.contents.ty,
+      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, tau)), sig))
     }
   }
 }

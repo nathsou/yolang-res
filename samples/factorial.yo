@@ -7,12 +7,6 @@ fn fact(n, acc) {
   }
 }
 
-fn id(x) { x }
-
-fn and(a, b) {
-  if a { b } else { false }
-}
-
 fn main() {
-  and(id(false), id(3) > 2)
+  fact(11, 1)
 }

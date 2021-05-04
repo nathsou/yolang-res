@@ -237,6 +237,7 @@ module Inst = {
     | GtF64
     | RemI32Signed
     | RemI32Unsigned
+    | And
 
   let info = inst =>
     switch inst {
@@ -296,6 +297,7 @@ module Inst = {
     | GtI64Unsigned => (0x56, "i64.gt_u")
     | GtF32 => (0x5e, "f32.gt")
     | GtF64 => (0x64, "f64.gt")
+    | And => (0x71, "i32.and")
     }
 
   let opcode = inst => {

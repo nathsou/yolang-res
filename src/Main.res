@@ -1,6 +1,6 @@
 open Belt
 
-let writeModule = (mod, outFile) => {
+let writeModule = (mod, outFile): unit => {
   let writeBytesSync: (string, Wasm.Vec.t) => unit = %raw(`
     function(path, bytes) {
       require('fs').writeFileSync(path, Uint8Array.from(bytes), 'binary');
@@ -30,32 +30,44 @@ let runModule = mod => {
   }, _)
 }
 
-let decompile: string => string = %raw(`
-  function(path) {
-    return require('child_process').execSync("wasm-decompile " + path).toString('utf-8');
-  }
-`)
+let run = (input, output): unit => {
+  switch Parser.parse(input) {
+    | Some((prog, _)) => {
+      let coreProg = prog->Array.map(Core.CoreDecl.from)
+      switch Inferencer.infer(coreProg) {
+        | Ok((_, subst)) => {
+            Context.substIdentifiers(subst)
+            // rename all identifiers
+            // Context.context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
+            //   id.contents.name = id.contents.name ++ "$" ++ Int.toString(id.contents.index) 
+            // })
+            // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
+            
+            let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
+            // Js.log(mod->Wasm.Module.show ++ "\n\n")
 
-let run = input => {
-  Parser.parse(input)->Option.mapWithDefault("could not parse input", ((prog, _)) => {
-    let coreProg = prog->Array.map(Core.CoreDecl.from)
-    // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
-    switch Inferencer.infer(coreProg) {
-    | Ok((_, subst)) => {
-        let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
-
-        // Js.log(mod->Wasm.Module.show ++ "\n\n")
-
-        let outFile = "test.wasm"
-        writeModule(mod, outFile)
-        let _ = runModule(mod)
-        decompile(outFile)
+            switch output {
+              | Some(outFile) => mod->writeModule(outFile)
+              | None => mod->runModule
+            }
+          }
+        | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)
       }
-    | Error(err) => `${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`
     }
-  })
+    | None => Js.Console.error("could no parse input")
+  }
 }
 
-let prog = Node.Fs.readFileAsUtf8Sync("samples/factorial.yo")
-
-Js.log(run(prog))
+switch Node.Process.argv {
+  | [_, _, path] => {
+    let prog = Node.Fs.readFileAsUtf8Sync(path)
+    run(prog, None)
+  }
+  | [_, _, path, out] => {
+    let prog = Node.Fs.readFileAsUtf8Sync(path)
+    run(prog, Some(out))
+  }
+  | _ => {
+    Js.log("Usage: yo src.yo")
+  }
+}

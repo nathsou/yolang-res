@@ -237,20 +237,21 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->compileExpr(elseExpr)
       self->emit(Wasm.Inst.End)
     }
-  | CoreLetInExpr(_, (x, xTy), valExpr, inExpr) => {
+  | CoreLetInExpr(_, x, valExpr, inExpr) => {
+      let x = x.contents
       self->compileExpr(valExpr)
-      self->declareLocalVar(x, xTy, ~isMutable=false)
+      self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       self->compileExpr(inExpr)
     }
-  | CoreVarExpr(_, x) => {
-      let (idx, _) = self->resolveLocalVar(x)
+  | CoreVarExpr(x) => {
+      let (idx, _) = self->resolveLocalVar(x.contents.name)
       self->emit(Wasm.Inst.GetLocal(idx))
     }
   | CoreAssignmentExpr(x, rhs) => {
-      let (idx, isMutable) = self->resolveLocalVar(x)
+      let (idx, isMutable) = self->resolveLocalVar(x.contents.name)
 
       if !isMutable {
-        Js.Exn.raiseError(`${x} is immutable`)
+        Js.Exn.raiseError(`${x.contents.name} is immutable`)
       }
 
       self->compileExpr(rhs)
@@ -271,14 +272,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emitUnit
     }
   | CoreAppExpr(_, lhs, args) => switch lhs {
-    | CoreVarExpr(_, f) => switch self->findFuncIndexByName(f) {
+    | CoreVarExpr(f) => switch self->findFuncIndexByName(f.contents.name) {
       | Some(idx) => {
           args->Array.forEach(arg => {
             self->compileExpr(arg)
           })
           self->emit(Wasm.Inst.Call(idx))
         }
-      | None => Js.Exn.raiseError(`no function named "${f}" found`)
+      | None => Js.Exn.raiseError(`no function named "${f.contents.name}" found`)
       }
     | _ => Js.Exn.raiseError("indirect function application not supported yet")
     }
@@ -297,17 +298,18 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
       // drop the return value on the stack
       self->emit(Wasm.Inst.Drop)
     }
-  | CoreLetStmt((x, xTy), isMutable, rhs) => {
+  | CoreLetStmt(x, isMutable, rhs) => {
       self->compileExpr(rhs)
-      self->declareLocalVar(x, xTy, ~isMutable)
+      self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }
 }
 
 and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   switch decl {
-  | CoreFuncDecl((f, _), args, body) => {
-      let func = Func.make(f, args, CoreExpr.tyVarOf(body))
+  | CoreFuncDecl(f, args, body) => {
+      let args = args->Array.map(x => (x.contents.name, x.contents.ty))
+      let func = Func.make(f.contents.name, args, CoreExpr.tyVarOf(body))
       let _ = self.funcs->Js.Array2.push(func)
 
       self->compileExpr(body)
