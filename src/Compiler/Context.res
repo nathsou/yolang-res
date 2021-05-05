@@ -3,7 +3,7 @@ open Belt
 type name = {
   mutable name: string,
   index: int,
-  mutable ty: Types.monoTy
+  mutable ty: Types.monoTy,
 }
 
 type nameRef = ref<name>
@@ -14,7 +14,7 @@ type t = {mutable tyVarIndex: int, identifiers: array<string>, renaming: renameM
 let make = (): t => {
   tyVarIndex: 0,
   identifiers: [],
-  renaming: HashMap.Int.make(~hintSize=10)
+  renaming: HashMap.Int.make(~hintSize=10),
 }
 
 // global context
@@ -41,7 +41,7 @@ let freshIdentifier = (name: string): nameRef => {
   let nameRef = ref({
     name: name,
     index: index,
-    ty: freshTyVar()
+    ty: freshTyVar(),
   })
 
   context.renaming->HashMap.Int.set(index, nameRef)
@@ -50,15 +50,18 @@ let freshIdentifier = (name: string): nameRef => {
 }
 
 let getIdentifier = (name: string): nameRef => {
-  switch context.identifiers->ArrayUtils.getReverseIndexBy(n => n == name)
-    ->Option.flatMap(index => context.renaming->HashMap.Int.get(index)) {
-      | Some(id) => id
-      | None => Js.Exn.raiseError(`unbound identifier "${name}"`) 
-    }
+  switch context.identifiers
+  ->ArrayUtils.getReverseIndexBy(n => n == name)
+  ->Option.flatMap(index => context.renaming->HashMap.Int.get(index)) {
+  | Some(id) => id
+  | None => Js.Exn.raiseError(`unbound identifier "${name}"`)
+  }
 }
 
 let substIdentifiers = (s: Subst.t): unit => {
-  context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
-    id.contents.ty = Subst.substMono(s, id.contents.ty)
+  context.renaming
+  ->HashMap.Int.valuesToArray
+  ->Array.forEach(id => {
+    id.contents.ty = s->Subst.substMono(id.contents.ty)
   })
 }

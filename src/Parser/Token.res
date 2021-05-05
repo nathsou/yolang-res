@@ -1,5 +1,5 @@
 module BinOp = {
-  type t = Plus | Sub | Mult | Div | Mod | Eq | Neq | Lss | Leq | Gtr | Geq
+  type t = Plus | Sub | Mult | Div | Mod | EqEq | Neq | Lss | Leq | Gtr | Geq
 
   let show = op =>
     switch op {
@@ -8,7 +8,7 @@ module BinOp = {
     | Mult => "*"
     | Div => "/"
     | Mod => "%"
-    | Eq => "=="
+    | EqEq => "=="
     | Neq => "!="
     | Lss => "<"
     | Leq => "<="
@@ -18,7 +18,7 @@ module BinOp = {
 }
 
 module Symbol = {
-  type t = Lparen | Rparen | Comma | SemiColon | EqualSign | RightArrow | Lbracket | Rbracket
+  type t = Lparen | Rparen | Comma | SemiColon | Eq | RightArrow | Lbracket | Rbracket
 
   let show = s =>
     switch s {
@@ -26,7 +26,7 @@ module Symbol = {
     | Rparen => ")"
     | Comma => ","
     | SemiColon => ";"
-    | EqualSign => "="
+    | Eq => "="
     | RightArrow => "->"
     | Lbracket => "{"
     | Rbracket => "}"

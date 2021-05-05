@@ -95,10 +95,7 @@ module Func = {
     )
 
     let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
-
-    // every function body must end with an "end" optocde
-    let _ = self.instructions->Js.Array2.push(Wasm.Inst.End)
-    let body = Wasm.Func.Body.make(locals, Optimizer.optimize(self.instructions))
+    let body = Wasm.Func.Body.make(locals, self.instructions->Optimizer.peephole)
 
     Wasm.Func.make(sig, body)
   }
@@ -159,63 +156,24 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->emit(inst)
     }
-  | CoreBinOpExpr(_, lhs, op, rhs) =>
-    switch op {
-    | Token.BinOp.Plus => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.AddI32)
+  | CoreBinOpExpr(_, lhs, op, rhs) => {
+      let opInst = switch op {
+      | Token.BinOp.Plus => Wasm.Inst.AddI32
+      | Token.BinOp.Sub => Wasm.Inst.SubI32
+      | Token.BinOp.Mult => Wasm.Inst.MulI32
+      | Token.BinOp.Div => Wasm.Inst.DivI32Unsigned
+      | Token.BinOp.EqEq => Wasm.Inst.EqI32
+      | Token.BinOp.Neq => Wasm.Inst.NeI32
+      | Token.BinOp.Lss => Wasm.Inst.LtI32Unsigned
+      | Token.BinOp.Leq => Wasm.Inst.LeI32Unsigned
+      | Token.BinOp.Gtr => Wasm.Inst.GtI32Unsigned
+      | Token.BinOp.Geq => Wasm.Inst.GeI32Unsigned
+      | Token.BinOp.Mod => Wasm.Inst.RemI32Unsigned
       }
-    | Token.BinOp.Sub => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.SubI32)
-      }
-    | Token.BinOp.Mult => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.MulI32)
-      }
-    | Token.BinOp.Div => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.DivI32Unsigned)
-      }
-    | Token.BinOp.Eq => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.EqI32)
-      }
-    | Token.BinOp.Neq => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.NeI32)
-      }
-    | Token.BinOp.Lss => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.LtI32Unsigned)
-      }
-    | Token.BinOp.Leq => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.LeI32Unsigned)
-      }
-    | Token.BinOp.Gtr => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.GtI32Unsigned)
-      }
-    | Token.BinOp.Geq => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.GeI32Unsigned)
-      }
-    | Token.BinOp.Mod => {
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.RemI32Unsigned)
-      }
+
+      self->compileExpr(lhs)
+      self->compileExpr(rhs)
+      self->emit(opInst)
     }
   | CoreBlockExpr(_, stmts, lastExpr) => {
       self->beginScope
@@ -271,8 +229,10 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emit(Wasm.Inst.End)
       self->emitUnit
     }
-  | CoreAppExpr(_, lhs, args) => switch lhs {
-    | CoreVarExpr(f) => switch self->findFuncIndexByName(f.contents.name) {
+  | CoreAppExpr(_, lhs, args) =>
+    switch lhs {
+    | CoreVarExpr(f) =>
+      switch self->findFuncIndexByName(f.contents.name) {
       | Some(idx) => {
           args->Array.forEach(arg => {
             self->compileExpr(arg)
@@ -313,6 +273,7 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
       let _ = self.funcs->Js.Array2.push(func)
 
       self->compileExpr(body)
+      self->emit(Wasm.Inst.End)
     }
   }
 }

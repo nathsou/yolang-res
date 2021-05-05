@@ -91,8 +91,8 @@ let alt = (la: lexer<'a>, lb: lexer<'a>): lexer<'a> => {
     }
 }
 
-let anyOf = (ps: array<lexer<'a>>): lexer<'a> => {
-  input => ps->ArrayUtils.firstSomeBy(lexer => lexer(input))
+let anyOf = (ls: array<lexer<'a>>): lexer<'a> => {
+  input => ls->ArrayUtils.firstSomeBy(lexer => lexer(input))
 }
 
 let string = str => {

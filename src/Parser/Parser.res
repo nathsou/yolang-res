@@ -65,7 +65,7 @@ let comparisonOp = anyOf([
 ])
 
 let eqOp = alt(
-  token(BinaryOp(BinOp.Eq))->map(_ => BinOp.Eq),
+  token(BinaryOp(BinOp.EqEq))->map(_ => BinOp.EqEq),
   token(BinaryOp(BinOp.Neq))->map(_ => BinOp.Neq),
 )
 
@@ -105,7 +105,7 @@ let letIn = alt(
   seq6(
     token(Keyword(Keywords.Let)),
     ident,
-    token(Symbol(EqualSign)),
+    token(Symbol(Eq)),
     expr,
     token(Keyword(Keywords.In)),
     expr,
@@ -124,10 +124,7 @@ let lambda = alt(
 )
 
 let assignment = alt(
-  seq3(ident, token(Symbol(Symbol.EqualSign)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(
-    x,
-    val,
-  )),
+  seq3(ident, token(Symbol(Eq)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(x, val)),
   lambda,
 )
 
@@ -166,15 +163,15 @@ expr := returnExpr.contents
 
 // statements
 
-let exprStmt = then(expr, token(Symbol(Symbol.SemiColon)))->map(((expr, _)) => Ast.ExprStmt(expr))
+let exprStmt = then(expr, token(Symbol(SemiColon)))->map(((expr, _)) => Ast.ExprStmt(expr))
 
 let letStmt = alt(
   seq5(
     token(Keyword(Keywords.Let)),
     ident,
-    token(Symbol(EqualSign)),
+    token(Symbol(Eq)),
     expr,
-    token(Symbol(Symbol.SemiColon)),
+    token(Symbol(SemiColon)),
   )->map(((_let, x, _eq, e, _)) => Ast.LetStmt(x, false, e)),
   exprStmt,
 )
@@ -183,9 +180,9 @@ let mutStmt = alt(
   seq5(
     token(Keyword(Keywords.Mut)),
     ident,
-    token(Symbol(EqualSign)),
+    token(Symbol(Eq)),
     expr,
-    token(Symbol(Symbol.SemiColon)),
+    token(Symbol(SemiColon)),
   )->map(((_, x, _eq, e, _)) => Ast.LetStmt(x, true, e)),
   letStmt,
 )
@@ -207,7 +204,8 @@ decl := funDecl.contents
 let prog = many(decl)
 
 let parse = input => {
-  Lexer.lex(Slice.fromString(input))->Option.flatMap(((tokens, _)) => {
+  let withoutComments = Js.String.replaceByRe(%re("/(\\/\\/[^\\n]*)/g"), "", input)
+  Lexer.lex(Slice.fromString(withoutComments))->Option.flatMap(((tokens, _)) => {
     prog.contents(Slice.make(tokens))
   })
 }

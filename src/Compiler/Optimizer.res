@@ -29,5 +29,3 @@ let peephole = (insts: array<Wasm.Inst.t>) => {
 
   aux(insts->List.fromArray, list{})
 }
-
-let optimize = peephole

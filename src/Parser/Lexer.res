@@ -28,17 +28,9 @@ let keyword = anyOf([
   string("return")->map(_ => Keyword(Keywords.Return)),
 ])
 
-let symbol = anyOf([
-  char('(')->map(_ => Symbol(Lparen)),
-  char(')')->map(_ => Symbol(Rparen)),
-  char(',')->map(_ => Symbol(Comma)),
-  char(';')->map(_ => Symbol(SemiColon)),
-  string("==")->map(_ => BinaryOp(Eq)),
+let binop = anyOf([
+  string("==")->map(_ => BinaryOp(EqEq)),
   string("!=")->map(_ => BinaryOp(Neq)),
-  char('=')->map(_ => Symbol(EqualSign)),
-  char('{')->map(_ => Symbol(Lbracket)),
-  char('}')->map(_ => Symbol(Rbracket)),
-  string("->")->map(_ => Symbol(RightArrow)),
   char('+')->map(_ => BinaryOp(Plus)),
   char('-')->map(_ => BinaryOp(Sub)),
   char('*')->map(_ => BinaryOp(Mult)),
@@ -50,6 +42,17 @@ let symbol = anyOf([
   char('>')->map(_ => BinaryOp(Gtr)),
 ])
 
-let token = anyOf([int, bool, keyword, symbol, identifier])
+let symbol = anyOf([
+  char('(')->map(_ => Symbol(Lparen)),
+  char(')')->map(_ => Symbol(Rparen)),
+  char(',')->map(_ => Symbol(Comma)),
+  char(';')->map(_ => Symbol(SemiColon)),
+  char('=')->map(_ => Symbol(Eq)),
+  char('{')->map(_ => Symbol(Lbracket)),
+  char('}')->map(_ => Symbol(Rbracket)),
+  string("->")->map(_ => Symbol(RightArrow)),
+])
+
+let token = anyOf([int, bool, keyword, binop, symbol, identifier])
 
 let lex = many(seq3(spaces, token, spaces)->map(((_, token, _)) => token))

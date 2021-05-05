@@ -22,7 +22,7 @@ let binOpTy = (op: Token.BinOp.t): polyTy => {
   | Mult => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
   | Div => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
   | Mod => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | Eq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
+  | EqEq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
   | Neq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
   | Lss => polyOf(funTy([u32Ty, u32Ty, boolTy]))
   | Leq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
@@ -74,6 +74,10 @@ and rewriteDecl = decl =>
   | CoreAst.CoreFuncDecl(f, args, body) => CoreAst.CoreFuncDecl(f, args, rewriteExpr(body))
   }
 
+// keep a stack of return type of functions to correctly infer the types for
+// function bodies using 'return' expressions
+let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
+
 let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: monoTy): result<
   Subst.t,
   string,
@@ -84,6 +88,7 @@ let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: mono
     )
   })
 }
+
 and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, string> => {
   open Result
 
@@ -175,17 +180,23 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
 
   | CoreFuncExpr(tau, name, args, body) => {
       let tauRet = CoreExpr.tyVarOf(body)
-      let gammaArgs = args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
+      funcRetTyStack->MutableStack.push(tauRet)
+      let gammaArgs =
+        args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
       let fTy = funTy(Array.concat(args->Array.map(x => x.contents.ty), [tauRet]))
       let gammaFArgs =
-        name->Option.mapWithDefault(gammaArgs, f => gammaArgs->Env.add(f.contents.name, polyOf(f.contents.ty)))
-      collectCoreExprTypeSubsts(gammaFArgs, body)->flatMap(sig => {
+        name->Option.mapWithDefault(gammaArgs, f =>
+          gammaArgs->Env.add(f.contents.name, polyOf(fTy))
+        )
+      collectCoreExprTypeSubstsWith(gammaFArgs, body, tauRet)->flatMap(sig => {
         let sigFty = substMono(sig, fTy)
         let sigTau = substMono(sig, tau)
         // let sigGamma = substEnv(sig, env)
         // let sigFtyGen = generalizeTy(sigGamma, sigFty)
         unify(sigTau, sigFty)->flatMap(sig2 => {
           let sig21 = substCompose(sig2, sig)
+
+          let _ = funcRetTyStack->MutableStack.pop
 
           Ok(sig21)
           // TODO: handle polymorphism
@@ -226,7 +237,11 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         )
       })
     }
-  | CoreReturnExpr(ret) => collectCoreExprTypeSubsts(env, ret)
+  | CoreReturnExpr(ret) =>
+    switch funcStack->MutableStack.top {
+    | Some(funcRetTy) => collectCoreExprTypeSubstsWith(env, ret, funcRetTy)
+    | None => Js.Exn.raiseError("'return' used outside of a function")
+    }
   }
 }
 
@@ -247,14 +262,11 @@ let inferCoreExprType = expr => {
 
 let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
   switch decl {
-  | CoreFuncDecl(f, args, body) => {
-      let tau = Context.freshTyVar()
-      collectCoreExprTypeSubstsWith(
-        env,
-        CoreFuncExpr(tau, Some(f), args, body),
-        f.contents.ty,
-      )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, tau)), sig))
-    }
+  | CoreFuncDecl(f, args, body) =>
+    collectCoreExprTypeSubsts(
+      env,
+      CoreFuncExpr(f.contents.ty, Some(f), args, body),
+    )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig))
   }
 }
 

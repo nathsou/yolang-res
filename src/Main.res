@@ -32,42 +32,41 @@ let runModule = mod => {
 
 let run = (input, output): unit => {
   switch Parser.parse(input) {
-    | Some((prog, _)) => {
+  | Some((prog, _)) => {
       let coreProg = prog->Array.map(Core.CoreDecl.from)
-      switch Inferencer.infer(coreProg) {
-        | Ok((_, subst)) => {
-            Context.substIdentifiers(subst)
-            // rename all identifiers
-            // Context.context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
-            //   id.contents.name = id.contents.name ++ "$" ++ Int.toString(id.contents.index) 
-            // })
-            // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None)))
-            
-            let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
-            // Js.log(mod->Wasm.Module.show ++ "\n\n")
 
-            switch output {
-              | Some(outFile) => mod->writeModule(outFile)
-              | None => mod->runModule
-            }
+      switch Inferencer.infer(coreProg) {
+      | Ok((_, subst)) => {
+          Context.substIdentifiers(subst)
+          // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(subst))))
+          // rename all identifiers
+          // Context.context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
+          //   id.contents.name = id.contents.name ++ "$" ++ Int.toString(id.contents.index)
+          // })
+
+          let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
+          // Js.log(mod->Wasm.Module.show ++ "\n\n")
+
+          switch output {
+          | Some(outFile) => mod->writeModule(outFile)
+          | None => mod->runModule
           }
-        | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)
+        }
+      | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)
       }
     }
-    | None => Js.Console.error("could no parse input")
+  | None => Js.Console.error("could no parse input")
   }
 }
 
 switch Node.Process.argv {
-  | [_, _, path] => {
+| [_, _, path] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, None)
   }
-  | [_, _, path, out] => {
+| [_, _, path, out] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, Some(out))
   }
-  | _ => {
-    Js.log("Usage: yo src.yo")
-  }
+| _ => Js.log("Usage: yo src.yo")
 }

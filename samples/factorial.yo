@@ -1,12 +1,19 @@
-
-fn fact(n, acc) {
+fn aux(n, acc) {
   if n == 0 {
     acc
   } else {
-    fact(n - 1, n * acc)
+    aux(n - 1, n * acc)
   }
 }
 
+fn fact(n) {
+  aux(n, 1) // tail recursive
+}
+
+// let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) }
+
+// let fact = n -> aux(n, 1)
+
 fn main() {
-  fact(11, 1)
+  fact(11)
 }
