@@ -238,7 +238,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       })
     }
   | CoreReturnExpr(ret) =>
-    switch funcStack->MutableStack.top {
+    switch funcRetTyStack->MutableStack.top {
     | Some(funcRetTy) => collectCoreExprTypeSubstsWith(env, ret, funcRetTy)
     | None => Js.Exn.raiseError("'return' used outside of a function")
     }
@@ -271,6 +271,8 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
 }
 
 let infer = (prog: array<CoreDecl.t>): result<(Env.t, Subst.t), string> => {
+  funcRetTyStack->MutableStack.clear
+
   prog
   ->Array.map(rewriteDecl)
   ->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
