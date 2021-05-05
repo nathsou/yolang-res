@@ -205,7 +205,19 @@ let prog = many(decl)
 
 let parse = input => {
   let withoutComments = Js.String.replaceByRe(%re("/(\\/\\/[^\\n]*)/g"), "", input)
-  Lexer.lex(Slice.fromString(withoutComments))->Option.flatMap(((tokens, _)) => {
-    prog.contents(Slice.make(tokens))
-  })
+  switch Lexer.lex(Slice.fromString(withoutComments)) {
+  | Some((tokens, _)) =>
+    switch prog.contents(Slice.make(tokens)) {
+    | Some((ast, rem)) =>
+      if rem->Slice.isEmpty {
+        Ok(ast)
+      } else {
+        let near =
+          rem->Slice.toArray->Array.slice(~offset=0, ~len=5)->Array.joinWith(" ", Token.show)
+        Error(`could not parse near ${near}`)
+      }
+    | _ => Error("could not parse")
+    }
+  | _ => Error("could not tokenize")
+  }
 }

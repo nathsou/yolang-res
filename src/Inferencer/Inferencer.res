@@ -240,7 +240,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   | CoreReturnExpr(ret) =>
     switch funcRetTyStack->MutableStack.top {
     | Some(funcRetTy) => collectCoreExprTypeSubstsWith(env, ret, funcRetTy)
-    | None => Js.Exn.raiseError("'return' used outside of a function")
+    | None => Error("'return' used outside of a function")
     }
   }
 }
@@ -249,7 +249,7 @@ and collectCoreStmtTypeSubsts = (env: Env.t, stmt: CoreStmt.t): result<Subst.t, 
   switch stmt {
   | CoreExprStmt(expr) => collectCoreExprTypeSubsts(env, expr)
   | CoreLetStmt(_, _, _) =>
-    Js.Exn.raiseError(`CoreLetStmt should have been rewritten to CoreLetIn in the inferencer`)
+    Error(`CoreLetStmt should have been rewritten to CoreLetIn in the inferencer`)
   }
 }
 

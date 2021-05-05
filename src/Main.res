@@ -32,7 +32,7 @@ let runModule = mod => {
 
 let run = (input, output): unit => {
   switch Parser.parse(input) {
-  | Some((prog, _)) => {
+  | Ok(prog) => {
       let coreProg = prog->Array.map(Core.CoreDecl.from)
 
       switch Inferencer.infer(coreProg) {
@@ -55,7 +55,7 @@ let run = (input, output): unit => {
       | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)
       }
     }
-  | None => Js.Console.error("could no parse input")
+  | Error(err) => Js.Console.error(err)
   }
 }
 
