@@ -1,6 +1,26 @@
 open Belt
 open Core
 
+module CompilerExn = {
+  exception InvalidTypeConversion(Types.monoTy)
+  exception LocalNotFound(string)
+  exception EmptyFunctionStack
+  exception CannotReassignImmutableValue(string)
+  exception FunctionNotFound(string)
+  exception Unimplemented(string)
+
+  let show = exn =>
+    switch exn {
+    | InvalidTypeConversion(ty) => `unsupported type: ${Types.showMonoTy(ty)}`
+    | LocalNotFound(x) => `variable "${x}" not found`
+    | EmptyFunctionStack => "Function stack is empty"
+    | CannotReassignImmutableValue(x) => `"cannot reassing ${x}" as it is immutable`
+    | FunctionNotFound(f) => `no function named "${f}" found`
+    | Unimplemented(message) => `unimplemented: ${message}`
+    | _ => "unexpected compiler exception"
+    }
+}
+
 module Local = {
   type t = {
     name: string,
@@ -25,7 +45,8 @@ let wasmValueTyOf = (tau: Types.monoTy): Wasm.ValueType.t => {
   | TyConst("u64", []) => I64
   | TyConst("bool", []) => I32
   | TyConst("()", []) => I32
-  | _ => Js.Exn.raiseError(`wasmValueTyOf: cannot convert ${showMonoTy(tau)}`)
+  | TyConst("Fun", _) => I32
+  | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
 
@@ -37,7 +58,8 @@ let wasmBlockRetTyOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
   | TyConst("u64", []) => I64
   | TyConst("bool", []) => I32
   | TyConst("()", []) => I32
-  | _ => Js.Exn.raiseError(`wasmBlockRetTyOf: cannot convert ${showMonoTy(tau)}`)
+  | TyConst("Fun", _) => I32
+  | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
 
@@ -83,7 +105,7 @@ module Func = {
     | None =>
       switch self.locals->ArrayUtils.getReverseIndexBy(local => local.name == name) {
       | Some(idx) => (self.params->Array.length + idx, Array.getExn(self.locals, idx).isMutable)
-      | None => Js.Exn.raiseError(`findLocal: ${name} not found`)
+      | None => raise(CompilerExn.LocalNotFound(name))
       }
     }
   }
@@ -105,12 +127,13 @@ type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
   mutable scopeDepth: int,
+  funcStack: MutableStack.t<Func.t>,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
-  switch self.funcs->Array.get(self.funcs->Array.length - 1) {
+  switch self.funcStack->MutableStack.top {
   | Some(f) => f
-  | None => Js.Exn.raiseError(`called getFuncExn on an empty function list`)
+  | None => raise(CompilerExn.EmptyFunctionStack)
   }
 }
 
@@ -209,7 +232,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       let (idx, isMutable) = self->resolveLocalVar(x.contents.name)
 
       if !isMutable {
-        Js.Exn.raiseError(`${x.contents.name} is immutable`)
+        raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
       }
 
       self->compileExpr(rhs)
@@ -239,15 +262,22 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           })
           self->emit(Wasm.Inst.Call(idx))
         }
-      | None => Js.Exn.raiseError(`no function named "${f.contents.name}" found`)
+      | None => raise(CompilerExn.FunctionNotFound(f.contents.name))
       }
-    | _ => Js.Exn.raiseError("indirect function application not supported yet")
+    | _ => raise(CompilerExn.Unimplemented("indirect function application not supported yet"))
     }
   | CoreReturnExpr(expr) => {
       self->compileExpr(expr)
       self->emit(Wasm.Inst.Return)
     }
-  | _ => Js.Exn.raiseError(`compileExpr: '${CoreExpr.show(expr)}' not handled`)
+  | CoreFuncExpr(_, name, args, body) => {
+      let name = name->Option.mapWithDefault(Context.freshIdentifier("lambda"), x => x)
+      let funcDecl = CoreAst.CoreFuncDecl(name, args, body)
+      self->compileDecl(funcDecl)
+
+      // TODO: implement indirect function calls
+      self->emit(Wasm.Inst.ConstI32(17))
+    }
   }
 }
 
@@ -269,28 +299,37 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   switch decl {
   | CoreFuncDecl(f, args, body) => {
       let args = args->Array.map(x => (x.contents.name, x.contents.ty))
-      let func = Func.make(f.contents.name, args, CoreExpr.tyVarOf(body))
+      let func = Func.make(f.contents.newName, args, CoreExpr.tyVarOf(body))
+
       let _ = self.funcs->Js.Array2.push(func)
+      let _ = self.funcStack->MutableStack.push(func)
 
       self->compileExpr(body)
       self->emit(Wasm.Inst.End)
+
+      let _ = self.funcStack->MutableStack.pop
     }
   }
 }
 
-let compile = (prog: array<CoreDecl.t>): Wasm.Module.t => {
+let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
   let self = {
     mod: Wasm.Module.make(),
     funcs: [],
     scopeDepth: 0,
+    funcStack: MutableStack.make(),
   }
 
-  prog->Array.forEach(self->compileDecl)
+  try {
+    prog->Array.forEach(self->compileDecl)
 
-  self.funcs->Array.forEach(f => {
-    let (sig, body) = f->Func.toWasmFunc
-    let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)
-  })
+    self.funcs->Array.forEach(f => {
+      let (sig, body) = f->Func.toWasmFunc
+      let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)
+    })
 
-  self.mod
+    Ok(self.mod)
+  } catch {
+  | exn => Error(CompilerExn.show(exn))
+  }
 }

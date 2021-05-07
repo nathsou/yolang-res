@@ -10,5 +10,6 @@ fn fib(n) {
 }
 
 fn main() {
+  let f = n -> n + 1;
   fib(83)
 }

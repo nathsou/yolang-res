@@ -44,12 +44,14 @@ let run = (input, output): unit => {
           //   id.contents.name = id.contents.name ++ "$" ++ Int.toString(id.contents.index)
           // })
 
-          let mod = Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst)))
-          // Js.log(mod->Wasm.Module.show ++ "\n\n")
-
-          switch output {
-          | Some(outFile) => mod->writeModule(outFile)
-          | None => mod->runModule
+          switch Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst))) {
+          | Ok(mod) =>
+            // Js.log(mod->Wasm.Module.show ++ "\n\n")
+            switch output {
+            | Some(outFile) => mod->writeModule(outFile)
+            | None => mod->runModule
+            }
+          | Error(err) => Js.log(err)
           }
         }
       | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)

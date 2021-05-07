@@ -1,7 +1,8 @@
 open Belt
 
 type name = {
-  mutable name: string,
+  name: string,
+  mutable newName: string,
   index: int,
   mutable ty: Types.monoTy,
 }
@@ -40,6 +41,7 @@ let freshIdentifier = (name: string): nameRef => {
 
   let nameRef = ref({
     name: name,
+    newName: name,
     index: index,
     ty: freshTyVar(),
   })
