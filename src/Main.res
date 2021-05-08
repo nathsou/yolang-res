@@ -38,12 +38,6 @@ let run = (input, output): unit => {
       switch Inferencer.infer(coreProg) {
       | Ok((_, subst)) => {
           Context.substIdentifiers(subst)
-          // Js.log(coreProg->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(subst))))
-          // rename all identifiers
-          // Context.context.renaming->HashMap.Int.valuesToArray->Array.forEach(id => {
-          //   id.contents.name = id.contents.name ++ "$" ++ Int.toString(id.contents.index)
-          // })
-
           switch Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst))) {
           | Ok(mod) =>
             // Js.log(mod->Wasm.Module.show ++ "\n\n")

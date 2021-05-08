@@ -1,15 +1,14 @@
 
-fn fib_aux(n, a, b) {
-  if n == 0 { return a; }
-  if n == 1 { return b; }
-  fib_aux(n - 1, b, a + b)
-}
-
 fn fib(n) {
+  let fib_aux = (n, a, b) -> {
+    if n == 0 { return a; }
+    if n == 1 { return b; }
+    fib_aux(n - 1, b, a + b)
+  };
+
   fib_aux(n, 0, 1)
 }
 
 fn main() {
-  let f = n -> n + 1;
   fib(83)
 }

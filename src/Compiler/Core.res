@@ -155,7 +155,21 @@ module CoreAst = {
 
   and fromStmt = stmt =>
     switch stmt {
-    | LetStmt(x, mut, rhs) => CoreLetStmt(Context.freshIdentifier(x), mut, fromExpr(rhs))
+    | LetStmt(x, mut, rhs) =>
+      switch rhs {
+      | FuncExpr(args, body) => {
+          let f = Context.freshIdentifier(x)
+          let func = CoreFuncExpr(
+            Context.freshTyVar(),
+            Some(f),
+            args->Array.map(Context.freshIdentifier),
+            fromExpr(body),
+          )
+
+          CoreLetStmt(f, mut, func)
+        }
+      | _ => CoreLetStmt(Context.freshIdentifier(x), mut, fromExpr(rhs))
+      }
     | ExprStmt(expr) => CoreExprStmt(fromExpr(expr))
     }
 

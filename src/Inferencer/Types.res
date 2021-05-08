@@ -24,9 +24,7 @@ let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])
 
-let funTy = tys => {
-  TyConst("Fun", tys)
-}
+let funTy = tys => TyConst("Fun", tys)
 
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int

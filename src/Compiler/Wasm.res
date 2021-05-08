@@ -196,6 +196,7 @@ module Inst = {
     | GetLocal(int)
     | SetLocal(int)
     | Call(int)
+    | CallIndirect(int, int)
     | Drop
     | AddI32
     | SubI32
@@ -254,8 +255,12 @@ module Inst = {
     | End => (0x0b, "end")
     | Return => (0x0f, "return")
     | GetLocal(idx) => (0x20, "local.get " ++ Int.toString(idx))
-    | SetLocal(idx) => (0x21, "local.get " ++ Int.toString(idx))
+    | SetLocal(idx) => (0x21, "local.set " ++ Int.toString(idx))
     | Call(funcIdx) => (0x10, "call " ++ Int.toString(funcIdx))
+    | CallIndirect(typeIdx, tableIdx) => (
+        0x11,
+        `call_indirect [typeIndex=${Int.toString(typeIdx)}, tableIndex=${Int.toString(tableIdx)}]`,
+      )
     | Drop => (0x1a, "drop")
     | AddI32 => (0x6a, "i32.add")
     | SubI32 => (0x6b, "i32.sub")
@@ -324,6 +329,8 @@ module Inst = {
     | BranchIf(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
+    | CallIndirect(typeIdx, tableIdx) =>
+      Array.concatMany([[inst->opcode], uleb128(typeIdx), uleb128(tableIdx)])
     | _ => [inst->opcode]
     }
 }
@@ -547,11 +554,128 @@ module ExportSection = {
   }
 }
 
+module ReferenceType = {
+  type t = FuncRef | ExternRef
+
+  let show = ref =>
+    switch ref {
+    | FuncRef => "funcref"
+    | ExternRef => "externref"
+    }
+
+  let encode = ref =>
+    switch ref {
+    | FuncRef => 0x70
+    | ExternRef => 0x6f
+    }
+}
+
+module Limits = {
+  type t = (int, option<int>)
+
+  let show = ((min, max): t) => {
+    `{ min: ${Int.toString(min)}, max: ${max->Option.mapWithDefault("?", Int.toString)} }`
+  }
+
+  let make = (min: int, max: option<int>): t => (min, max)
+  let makeExact = (count: int): t => (count, Some(count))
+
+  let encode = ((min, max): t): Vec.t => {
+    switch max {
+    | Some(max) => Array.concatMany([[0x01], uleb128(min), uleb128(max)])
+    | None => Array.concat([0x00], uleb128(min))
+    }
+  }
+}
+
+module Table = {
+  type index = int
+
+  type t = (ReferenceType.t, Limits.t)
+
+  let make = (refType: ReferenceType.t, limits: Limits.t): t => {
+    (refType, limits)
+  }
+
+  let encode = ((refTy, limits): t) => {
+    Array.concat([refTy->ReferenceType.encode], limits->Limits.encode)
+  }
+
+  let show = ((refTy, limits): t) => {
+    `table ${refTy->ReferenceType.show} ${limits->Limits.show}`
+  }
+}
+
+module TableSection = {
+  type t = array<Table.t>
+
+  let make = (): t => []
+
+  let addTable = (self: t, table: Table.t): unit => {
+    let _ = self->Js.Array2.push(table)
+  }
+
+  let show = tables => {
+    Section.show(Section.Table) ++ "\n" ++ tables->Array.joinWith("\n", Table.show)
+  }
+
+  let encode = tables => {
+    Section.encode(Section.Table, Vec.encodeMany(tables->Array.map(Table.encode)))
+  }
+}
+
+// https://webassembly.github.io/spec/core/binary/modules.html#element-section
+module Element = {
+  type t = {
+    offset: int,
+    funcIndices: array<Func.index>,
+  }
+
+  let fromFuncRefs = (~offset=0, funcIndices: array<Func.index>): t => {
+    offset: offset,
+    funcIndices: funcIndices,
+  }
+
+  let show = ({offset, funcIndices}: t) =>
+    `elem funcref (${funcIndices->Array.joinWith(" ", Int.toString)}) [offset=${Int.toString(
+        offset,
+      )}]`
+
+  let encode = ({offset, funcIndices}: t): Vec.t => {
+    Array.concatMany([
+      [0x00],
+      Inst.ConstI32(offset)->Inst.encode,
+      Inst.End->Inst.encode,
+      Vec.encodeMany(funcIndices->Array.map(uleb128)),
+    ])
+  }
+}
+
+module ElementSection = {
+  type t = array<Element.t>
+
+  let make = (): t => []
+
+  let addElement = (self: t, elem: Element.t): unit => {
+    let _ = self->Js.Array2.push(elem)
+  }
+
+  let show = elems => {
+    Section.show(Section.Element) ++ "\n" ++ elems->Array.joinWith("\n", Element.show)
+  }
+
+  let encode = elems => {
+    Section.encode(Section.Element, Vec.encodeMany(elems->Array.map(Element.encode)))
+  }
+}
+
 module Module = {
   type t = {
     typeSection: TypeSection.t,
     funcSection: FuncSection.t,
+    tableSection: TableSection.t,
     exportSection: ExportSection.t,
+    elementSection: ElementSection.t,
     codeSection: CodeSection.t,
     importsCount: int,
   }
@@ -559,13 +683,19 @@ module Module = {
   let make = (): t => {
     typeSection: TypeSection.make(),
     funcSection: FuncSection.make(),
+    tableSection: TableSection.make(),
     exportSection: ExportSection.make(),
+    elementSection: ElementSection.make(),
     codeSection: CodeSection.make(),
     importsCount: 0,
   }
 
+  let addSignature = (self: t, sig: Func.Signature.t): Func.Signature.index => {
+    self.typeSection->TypeSection.add(sig)
+  }
+
   let addFunc = (self: t, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
-    let sigIndex = self.typeSection->TypeSection.add(sig)
+    let sigIndex = self->addSignature(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
     self.codeSection->CodeSection.addFunc(body) + self.importsCount
   }
@@ -584,12 +714,22 @@ module Module = {
     funcIndex
   }
 
+  let addTable = (self: t, table: Table.t): unit => {
+    self.tableSection->TableSection.addTable(table)
+  }
+
+  let addElement = (self: t, elem: Element.t): unit => {
+    self.elementSection->ElementSection.addElement(elem)
+  }
+
   let encode = (self: t): Vec.t => {
     Array.concatMany([
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
       self.typeSection->TypeSection.encode,
       self.funcSection->FuncSection.encode,
+      self.tableSection->TableSection.encode,
       self.exportSection->ExportSection.encode,
+      self.elementSection->ElementSection.encode,
       self.codeSection->CodeSection.encode,
     ])
   }
@@ -598,7 +738,9 @@ module Module = {
     [
       self.typeSection->TypeSection.show,
       self.funcSection->FuncSection.show,
+      self.tableSection->TableSection.show,
       self.exportSection->ExportSection.show,
+      self.elementSection->ElementSection.show,
       self.codeSection->CodeSection.show,
     ]->Array.joinWith("\n\n", x => x)
   }

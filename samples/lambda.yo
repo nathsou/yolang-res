@@ -1,0 +1,6 @@
+
+fn main() {
+  let twice = (f, x) -> f(f(x));
+  
+  twice(n -> n * n, 7)
+}
