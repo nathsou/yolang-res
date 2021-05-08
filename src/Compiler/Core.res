@@ -134,7 +134,7 @@ module CoreAst = {
     | FuncExpr(args, body) =>
       switch args {
       | [] => CoreFuncExpr(tau(), None, [freshIdentifier("__x")], fromExpr(body))
-      | _ => CoreFuncExpr(tau(), None, args->Array.map(freshIdentifier), fromExpr(body))
+      | _ => CoreFuncExpr(tau(), None, args->Array.map(freshIdentifier(~ty=None)), fromExpr(body))
       }
     | LetInExpr(x, e1, e2) =>
       switch e1 {
@@ -143,7 +143,7 @@ module CoreAst = {
           let func = CoreFuncExpr(
             Context.freshTyVar(),
             Some(f),
-            args->Array.map(Context.freshIdentifier),
+            args->Array.map(Context.freshIdentifier(~ty=None)),
             fromExpr(body),
           )
 
@@ -173,20 +173,20 @@ module CoreAst = {
 
   and fromStmt = stmt =>
     switch stmt {
-    | LetStmt(x, mut, rhs) =>
+    | LetStmt(x, mut, rhs, ty) =>
       switch rhs {
       | FuncExpr(args, body) => {
-          let f = Context.freshIdentifier(x)
+          let f = Context.freshIdentifier(x, ~ty)
           let func = CoreFuncExpr(
             Context.freshTyVar(),
             Some(f),
-            args->Array.map(Context.freshIdentifier),
+            args->Array.map(Context.freshIdentifier(~ty=None)),
             fromExpr(body),
           )
 
           CoreLetStmt(f, mut, func)
         }
-      | _ => CoreLetStmt(Context.freshIdentifier(x), mut, fromExpr(rhs))
+      | _ => CoreLetStmt(Context.freshIdentifier(x, ~ty), mut, fromExpr(rhs))
       }
     | ExprStmt(expr) => CoreExprStmt(fromExpr(expr))
     }
@@ -194,7 +194,7 @@ module CoreAst = {
   and fromDecl = decl => {
     switch decl {
     | Ast.FuncDecl(f, args, body) => {
-        let args = args->Array.map(Context.freshIdentifier)
+        let args = args->Array.map(Context.freshIdentifier(~ty=None))
         CoreFuncDecl(Context.freshIdentifier(f), args, fromExpr(body))
       }
     | Ast.GlobalDecl(x, mut, init) =>

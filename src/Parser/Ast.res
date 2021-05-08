@@ -24,7 +24,7 @@ module Ast = {
     | IfExpr(expr, expr, option<expr>)
     | WhileExpr(expr, expr)
     | ReturnExpr(expr)
-  and stmt = LetStmt(string, bool, expr) | ExprStmt(expr)
+  and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
   and decl = FuncDecl(string, array<string>, expr) | GlobalDecl(string, bool, expr)
 
   let rec showExpr = expr =>
@@ -66,7 +66,7 @@ module Ast = {
 
   and showStmt = stmt =>
     switch stmt {
-    | LetStmt(x, mut, rhs) =>
+    | LetStmt(x, mut, rhs, _) =>
       if mut {
         `let mut ${x} = ${showExpr(rhs)}`
       } else {

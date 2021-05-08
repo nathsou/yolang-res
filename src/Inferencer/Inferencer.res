@@ -17,17 +17,17 @@ let constTy = (c: Ast.Expr.Const.t): polyTy => {
 let binOpTy = (op: Token.BinOp.t): polyTy => {
   open Token.BinOp
   switch op {
-  | Plus => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | Sub => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | Mult => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | Div => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | Mod => polyOf(funTy([u32Ty, u32Ty, u32Ty]))
-  | EqEq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Neq => ([0], funTy([TyVar(0), TyVar(0), boolTy])) // 'a -> 'a -> bool
-  | Lss => polyOf(funTy([u32Ty, u32Ty, boolTy]))
-  | Leq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
-  | Gtr => polyOf(funTy([u32Ty, u32Ty, boolTy]))
-  | Geq => polyOf(funTy([u32Ty, u32Ty, boolTy]))
+  | Plus => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | Sub => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | Mult => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | Div => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | Mod => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | EqEq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // 'a -> 'a -> bool
+  | Neq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // 'a -> 'a -> bool
+  | Lss => polyOf(funTy([u32Ty, u32Ty], boolTy))
+  | Leq => polyOf(funTy([u32Ty, u32Ty], boolTy))
+  | Gtr => polyOf(funTy([u32Ty, u32Ty], boolTy))
+  | Geq => polyOf(funTy([u32Ty, u32Ty], boolTy))
   }
 }
 
@@ -118,7 +118,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       let sigAGamma = substEnv(sigA, env)
       collectCoreExprTypeSubsts(sigAGamma, b)->flatMap(sigB => {
         let sigBA = substCompose(sigB, sigA)
-        let opTy = substMono(sigBA, funTy([CoreExpr.tyVarOf(a), CoreExpr.tyVarOf(b), tau]))
+        let opTy = substMono(sigBA, funTy([CoreExpr.tyVarOf(a), CoreExpr.tyVarOf(b)], tau))
         let tau' = Context.freshInstance(binOpTy(op))
         unify(opTy, tau')->map(sig => substCompose(sig, sigBA))
       })
@@ -184,7 +184,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       funcRetTyStack->MutableStack.push(tauRet)
       let gammaArgs =
         args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
-      let fTy = funTy(Array.concat(args->Array.map(x => x.contents.ty), [tauRet]))
+      let fTy = funTy(args->Array.map(x => x.contents.ty), tauRet)
       let gammaFArgs =
         name->Option.mapWithDefault(gammaArgs, f =>
           gammaArgs->Env.add(f.contents.name, polyOf(fTy))
@@ -212,7 +212,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     }
   | CoreAppExpr(tau, lhs, args) => {
       let argsTy = args->Array.map(CoreExpr.tyVarOf)
-      let fTy = funTy(Array.concat(argsTy, [tau]))
+      let fTy = funTy(argsTy, tau)
       collectCoreExprTypeSubstsWith(env, lhs, fTy)
       ->flatMap(sig1 => {
         args

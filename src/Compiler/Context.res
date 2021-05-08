@@ -35,7 +35,7 @@ let freshInstance = ((polyVars, ty): Types.polyTy): Types.monoTy => {
   Subst.substMono(Array.zip(polyVars, freshTyVars)->Map.Int.fromArray, ty)
 }
 
-let freshIdentifier = (name: string): nameRef => {
+let freshIdentifier = (~ty=None, name: string): nameRef => {
   let index = context.identifiers->Array.length
   let _ = context.identifiers->Js.Array2.push(name)
 
@@ -43,7 +43,10 @@ let freshIdentifier = (name: string): nameRef => {
     name: name,
     newName: name,
     index: index,
-    ty: freshTyVar(),
+    ty: switch ty {
+    | Some(ty) => ty
+    | None => freshTyVar()
+    },
   })
 
   context.renaming->HashMap.Int.set(index, nameRef)

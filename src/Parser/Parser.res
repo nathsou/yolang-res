@@ -7,6 +7,7 @@ let decl: parser<Decl.t> = ref(_ => None)
 let expr: parser<Expr.t> = ref(_ => None)
 let block: parser<Expr.t> = ref(_ => None)
 let stmt: parser<Stmt.t> = ref(_ => None)
+let type_: parser<Types.monoTy> = ref(_ => None)
 
 // expressions
 
@@ -40,6 +41,36 @@ let globalName = satBy(t =>
   | _ => None
   }
 )
+
+let unitType = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Types.unitTy)
+
+let primitiveType = alt(
+  unitType,
+  satBy(t =>
+    switch t {
+    | Identifier("u32") => Some(Types.u32Ty)
+    | Identifier("bool") => Some(Types.boolTy)
+    | _ => None
+    }
+  ),
+)
+
+let primitiveTypeOrParens = alt(primitiveType, parens(type_))
+
+let funcType =
+  seq3(
+    alt(parens(commas(type_)), primitiveTypeOrParens->map(ty => [ty])),
+    token(Symbol(RightArrow)),
+    type_,
+  )->map(((args, _, ret)) => Types.funTy(args, ret))
+
+type_ := anyOf([funcType, primitiveType]).contents
+
+let globalAnnotation =
+  then(globalName, optional(then(token(Symbol(Colon)), type_)))->map(((x, ann)) => (
+    x,
+    ann->Option.map(((_, ty)) => ty),
+  ))
 
 let var = alt(ident, globalName)->map(x => Ast.VarExpr(x))
 
@@ -176,11 +207,16 @@ let exprStmt = then(expr, token(Symbol(SemiColon)))->map(((expr, _)) => Ast.Expr
 let letStmt = alt(
   seq5(
     alt(token(Keyword(Keywords.Let)), token(Keyword(Keywords.Mut))),
-    ident,
+    globalAnnotation,
     token(Symbol(Eq)),
     expr,
     token(Symbol(SemiColon)),
-  )->map(((letOrMut, x, _eq, e, _)) => Ast.LetStmt(x, letOrMut == Keyword(Keywords.Mut), e)),
+  )->map(((letOrMut, (x, ty), _eq, e, _)) => Ast.LetStmt(
+    x,
+    letOrMut == Keyword(Keywords.Mut),
+    e,
+    ty,
+  )),
   exprStmt,
 )
 

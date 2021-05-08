@@ -18,7 +18,7 @@ module BinOp = {
 }
 
 module Symbol = {
-  type t = Lparen | Rparen | Comma | SemiColon | Eq | RightArrow | Lbracket | Rbracket
+  type t = Lparen | Rparen | Comma | SemiColon | Eq | RightArrow | Lbracket | Rbracket | Colon
 
   let show = s =>
     switch s {
@@ -30,6 +30,7 @@ module Symbol = {
     | RightArrow => "->"
     | Lbracket => "{"
     | Rbracket => "}"
+    | Colon => ":"
     }
 }
 

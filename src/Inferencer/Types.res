@@ -24,7 +24,7 @@ let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])
 
-let funTy = tys => TyConst("Fun", tys)
+let funTy = (args, ret) => TyConst("Fun", Array.concat(args, [ret]))
 
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int
@@ -73,7 +73,10 @@ let rec showMonoTy = ty =>
             args->Array.getExn(args->Array.length - 1),
           )
 
-          `(${args->Array.joinWith(", ", showMonoTy)}) -> ${showMonoTy(ret)}`
+          switch args {
+          | [arg] => `${showMonoTy(arg)} -> ${showMonoTy(ret)}`
+          | _ => `(${args->Array.joinWith(", ", showMonoTy)}) -> ${showMonoTy(ret)}`
+          }
         }
       | _ => `${name}(${args->Array.joinWith(", ", showMonoTy)})`
       }
