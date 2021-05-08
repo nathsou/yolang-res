@@ -437,10 +437,8 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
   try {
     prog->Array.forEach(self->compileDecl)
 
-    let funcRefs = Wasm.Element.fromFuncRefs(
-      ~offset=0,
-      self.funcs->Array.mapWithIndex((index, _) => index),
-    )
+    // add memory
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(1, None)))
 
     // add globals
     self.globals->HashMap.String.forEach((_, global) => {
@@ -448,6 +446,11 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     })
 
     // add function references
+    let funcRefs = Wasm.Element.fromFuncRefs(
+      ~offset=0,
+      self.funcs->Array.mapWithIndex((index, _) => index),
+    )
+
     self.mod->Wasm.Module.addElement(funcRefs)
     self.mod->Wasm.Module.addTable(
       Wasm.Table.make(Wasm.ReferenceType.FuncRef, Wasm.Limits.makeExact(self.funcs->Array.length)),

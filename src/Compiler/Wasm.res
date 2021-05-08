@@ -643,9 +643,9 @@ module Element = {
   }
 
   let show = ({offset, funcIndices}: t) =>
-    `elem funcref (${funcIndices->Array.joinWith(" ", Int.toString)}) [offset=${Int.toString(
+    `elem funcref (${funcIndices->Array.joinWith(" ", Int.toString)}) (offset=${Int.toString(
         offset,
-      )}]`
+      )})`
 
   let encode = ({offset, funcIndices}: t): Vec.t => {
     Array.concatMany([
@@ -723,11 +723,40 @@ module GlobalSection = {
   }
 }
 
+module Memory = {
+  type t = Limits.t
+  type index = int
+
+  let make = (limits: Limits.t): t => limits
+  let show = (mem: t) => "memory " ++ mem->Limits.show
+  let encode = Limits.encode
+}
+
+module MemorySection = {
+  type t = array<Memory.t>
+
+  let make = (): t => []
+
+  let add = (self: t, mem: Memory.t): Memory.index => {
+    let index = self->Js.Array2.push(mem) - 1
+    index
+  }
+
+  let show = (mems: t) => {
+    Section.show(Section.Memory) ++ "\n" ++ mems->Array.joinWith("\n", Memory.show)
+  }
+
+  let encode = (mems: t): Vec.t => {
+    Section.encode(Section.Memory, Vec.encodeMany(mems->Array.map(Memory.encode)))
+  }
+}
+
 module Module = {
   type t = {
     typeSection: TypeSection.t,
     funcSection: FuncSection.t,
     tableSection: TableSection.t,
+    memorySection: MemorySection.t,
     globalSection: GlobalSection.t,
     exportSection: ExportSection.t,
     elementSection: ElementSection.t,
@@ -739,6 +768,7 @@ module Module = {
     typeSection: TypeSection.make(),
     funcSection: FuncSection.make(),
     tableSection: TableSection.make(),
+    memorySection: MemorySection.make(),
     globalSection: GlobalSection.make(),
     exportSection: ExportSection.make(),
     elementSection: ElementSection.make(),
@@ -782,12 +812,17 @@ module Module = {
     self.globalSection->GlobalSection.add(global)
   }
 
+  let addMemory = (self: t, mem: Memory.t): Memory.index => {
+    self.memorySection->MemorySection.add(mem)
+  }
+
   let encode = (self: t): Vec.t => {
     Array.concatMany([
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
       self.typeSection->TypeSection.encode,
       self.funcSection->FuncSection.encode,
       self.tableSection->TableSection.encode,
+      self.memorySection->MemorySection.encode,
       self.globalSection->GlobalSection.encode,
       self.exportSection->ExportSection.encode,
       self.elementSection->ElementSection.encode,
@@ -800,6 +835,7 @@ module Module = {
       self.typeSection->TypeSection.show,
       self.funcSection->FuncSection.show,
       self.tableSection->TableSection.show,
+      self.memorySection->MemorySection.show,
       self.globalSection->GlobalSection.show,
       self.exportSection->ExportSection.show,
       self.elementSection->ElementSection.show,
