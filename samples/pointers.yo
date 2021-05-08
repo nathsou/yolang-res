@@ -1,10 +1,5 @@
 
 fn main() {
-  let f: u32 -> u32 = n -> n + 1;
-  let p: bool = true;
-  let q: bool = false;
-  let and: (bool, bool) -> bool = (a, b) -> if a { b } else { false };
-  let or: (bool, bool) -> bool = (a, b) -> if a { true } else { b };
-  let res: bool = or(and(p, q), or(q, and(p, q)));
-  res
+  let p = 4 as u32;
+  p
 }

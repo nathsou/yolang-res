@@ -15,6 +15,7 @@ module CoreAst = {
     | CoreIfExpr(monoTy, expr, expr, expr)
     | CoreWhileExpr(expr, expr)
     | CoreReturnExpr(expr)
+    | CoreTypeAssertion(expr, Types.monoTy, Types.monoTy)
   and decl =
     | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
@@ -33,6 +34,7 @@ module CoreAst = {
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
     | CoreReturnExpr(expr) => tyVarOfExpr(expr)
+    | CoreTypeAssertion(_, _, assertedTy) => assertedTy
     }
   }
 
@@ -79,6 +81,8 @@ module CoreAst = {
       )
     | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
     | CoreReturnExpr(expr) => `return ${showExpr(expr)}`
+    | CoreTypeAssertion(expr, _, assertedTy) =>
+      `${showExpr(expr)} as ${Types.showMonoTy(assertedTy)}`
     }
   }
 
@@ -168,6 +172,7 @@ module CoreAst = {
       )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
+    | TypeAssertion(expr, assertedTy) => CoreTypeAssertion(fromExpr(expr), tau(), assertedTy)
     }
   }
 
@@ -219,6 +224,8 @@ module CoreAst = {
       CoreIfExpr(subst(tau), recCall(cond), recCall(thenE), recCall(elseE))
     | CoreWhileExpr(cond, body) => CoreWhileExpr(recCall(cond), recCall(body))
     | CoreReturnExpr(expr) => CoreReturnExpr(recCall(expr))
+    | CoreTypeAssertion(expr, originalTy, assertedTy) =>
+      CoreTypeAssertion(recCall(expr), subst(originalTy), subst(assertedTy))
     }
   }
 

@@ -10,6 +10,7 @@ module CompilerExn = {
   exception FunctionNotFound(string)
   exception Unimplemented(string)
   exception UnsupportedGlobalInitializer(CoreExpr.t)
+  exception InvalidTypeAssertion(Types.monoTy, Types.monoTy)
 
   let show = exn =>
     switch exn {
@@ -21,6 +22,8 @@ module CompilerExn = {
     | FunctionNotFound(f) => `no function named "${f}" found`
     | Unimplemented(message) => `unimplemented: ${message}`
     | UnsupportedGlobalInitializer(expr) => `unsupported global initializer: ${CoreExpr.show(expr)}`
+    | InvalidTypeAssertion(a, b) =>
+      `invalid type assertion from ${Types.showMonoTy(a)} to ${Types.showMonoTy(b)}`
     | _ => "unexpected compiler exception"
     }
 }
@@ -50,6 +53,7 @@ let wasmValueTyOf = (tau: Types.monoTy): Wasm.ValueType.t => {
   | TyConst("bool", []) => I32
   | TyConst("()", []) => I32
   | TyConst("Fun", _) => I32
+  | TyConst("Ptr", _) => I32
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
@@ -63,6 +67,7 @@ let wasmBlockRetTyOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
   | TyConst("bool", []) => I32
   | TyConst("()", []) => I32
   | TyConst("Fun", _) => I32
+  | TyConst("Ptr", _) => I32
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
@@ -367,6 +372,19 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       let funcIndex = self->compileFuncDecl(name, args, body)
 
       self->emit(Wasm.Inst.ConstI32(funcIndex))
+    }
+  | CoreTypeAssertion(expr, originalTy, assertedTy) => {
+      // Js.log(`${Types.showMonoTy(originalTy)} as ${Types.showMonoTy(assertedTy)}`)
+
+      if originalTy == assertedTy {
+        ()
+      } else {
+        switch (originalTy, assertedTy) {
+        | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
+        }
+      }
+
+      self->compileExpr(expr)
     }
   }
 }

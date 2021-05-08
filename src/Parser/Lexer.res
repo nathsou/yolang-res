@@ -31,6 +31,7 @@ let keyword = anyOf([
   string("fn")->map(_ => Keyword(Keywords.Fn)),
   string("while")->map(_ => Keyword(Keywords.While)),
   string("return")->map(_ => Keyword(Keywords.Return)),
+  string("as")->map(_ => Keyword(Keywords.As)),
 ])
 
 let symbol = anyOf([

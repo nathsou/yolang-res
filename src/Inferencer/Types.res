@@ -26,6 +26,8 @@ let unitTy = TyConst("()", [])
 
 let funTy = (args, ret) => TyConst("Fun", Array.concat(args, [ret]))
 
+let pointerTy = ty => TyConst("Pointer", [ty])
+
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int
   switch ty {
@@ -78,7 +80,7 @@ let rec showMonoTy = ty =>
           | _ => `(${args->Array.joinWith(", ", showMonoTy)}) -> ${showMonoTy(ret)}`
           }
         }
-      | _ => `${name}(${args->Array.joinWith(", ", showMonoTy)})`
+      | _ => `${name}<${args->Array.joinWith(", ", showMonoTy)}>`
       }
     }
   }

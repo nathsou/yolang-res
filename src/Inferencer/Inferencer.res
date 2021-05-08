@@ -243,6 +243,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     | Some(funcRetTy) => collectCoreExprTypeSubstsWith(env, ret, funcRetTy)
     | None => Error("'return' used outside of a function")
     }
+  | CoreTypeAssertion(expr, originalTy, _) => collectCoreExprTypeSubstsWith(env, expr, originalTy)
   }
 }
 

@@ -34,6 +34,13 @@ let ident = satBy(t =>
   }
 )
 
+let uppercaseIdent = satBy(t =>
+  switch t {
+  | UppercaseIdentifier(n) => Some(n)
+  | _ => None
+  }
+)
+
 let globalName = satBy(t =>
   switch t {
   | UppercaseIdentifier(n) => Some(n)
@@ -57,14 +64,26 @@ let primitiveType = alt(
 
 let primitiveTypeOrParens = alt(primitiveType, parens(type_))
 
-let funcType =
+let funcType = alt(
   seq3(
     alt(parens(commas(type_)), primitiveTypeOrParens->map(ty => [ty])),
     token(Symbol(RightArrow)),
     type_,
-  )->map(((args, _, ret)) => Types.funTy(args, ret))
+  )->map(((args, _, ret)) => Types.funTy(args, ret)),
+  primitiveTypeOrParens,
+)
 
-type_ := anyOf([funcType, primitiveType]).contents
+let compoundType = alt(
+  seq4(uppercaseIdent, token(BinaryOp(Lss)), commas(type_), token(BinaryOp(Gtr)))->map(((
+    name,
+    _,
+    params,
+    _,
+  )) => Types.TyConst(name, params)),
+  funcType,
+)
+
+type_ := compoundType.contents
 
 let globalAnnotation =
   then(globalName, optional(then(token(Symbol(Colon)), type_)))->map(((x, ann)) => (
@@ -198,7 +217,17 @@ let returnExpr = alt(
   block,
 )
 
-expr := returnExpr.contents
+let typeAssertion = then(returnExpr, optional(then(token(Keyword(Keywords.As)), type_)))->map(((
+  e,
+  assertion,
+)) =>
+  switch assertion {
+  | Some((_, ty)) => Ast.TypeAssertion(e, ty)
+  | None => e
+  }
+)
+
+expr := typeAssertion.contents
 
 // statements
 
