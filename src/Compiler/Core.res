@@ -128,11 +128,24 @@ module CoreAst = {
     | VarExpr(x) => CoreVarExpr(getIdentifier(x))
     | AssignmentExpr(x, val) => CoreAssignmentExpr(getIdentifier(x), fromExpr(val))
     | FuncExpr(args, body) =>
-      switch args {
+            switch args {
       | [] => CoreFuncExpr(tau(), None, [freshIdentifier("__x")], fromExpr(body))
       | _ => CoreFuncExpr(tau(), None, args->Array.map(freshIdentifier), fromExpr(body))
       }
-    | LetInExpr(x, e1, e2) => CoreLetInExpr(tau(), freshIdentifier(x), fromExpr(e1), fromExpr(e2))
+    | LetInExpr(x, e1, e2) => switch e1 {
+      | FuncExpr(args, body) => {
+        let f = Context.freshIdentifier(x)
+        let func = CoreFuncExpr(
+          Context.freshTyVar(),
+          Some(f),
+          args->Array.map(Context.freshIdentifier),
+          fromExpr(body),
+        )
+
+        CoreLetInExpr(tau(), f, func, fromExpr(e2))
+      }
+      | _ => CoreLetInExpr(tau(), freshIdentifier(x), fromExpr(e1), fromExpr(e2))
+    }
     | AppExpr(f, args) => CoreAppExpr(tau(), fromExpr(f), args->Array.map(arg => fromExpr(arg)))
     | BlockExpr(stmts, lastExpr) =>
       switch (stmts, lastExpr) {

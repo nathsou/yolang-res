@@ -1,18 +1,8 @@
-fn aux(n, acc) {
-  if n == 0 {
-    acc
-  } else {
-    aux(n - 1, n * acc)
-  }
-}
 
 fn fact(n) {
-  aux(n, 1) // tail recursive
+  let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) } in
+  aux(n, 1)
 }
-
-// let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) }
-
-// let fact = n -> aux(n, 1)
 
 fn main() {
   fact(11)

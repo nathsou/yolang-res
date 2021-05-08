@@ -243,8 +243,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreLetInExpr(_, x, valExpr, inExpr) => {
       let x = x.contents
-      self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       self->compileExpr(valExpr)
+      self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
