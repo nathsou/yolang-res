@@ -55,6 +55,7 @@ type t =
   | BinaryOp(BinOp.t)
   | Symbol(Symbol.t)
   | Identifier(string)
+  | UppercaseIdentifier(string)
   | Keyword(Keywords.t)
 
 let show = token =>
@@ -64,6 +65,7 @@ let show = token =>
   | BinaryOp(op) => op->BinOp.show
   | Symbol(s) => Symbol.show(s)
   | Identifier(name) => name
+  | UppercaseIdentifier(name) => name
   | Keyword(kw) => kw->Keywords.show
   }
 
@@ -74,6 +76,7 @@ let debug = token => {
   | BinaryOp(_) => "binop"
   | Symbol(_) => "symbol"
   | Identifier(_) => "identifier"
+  | UppercaseIdentifier(_) => "uppercase identifier"
   | Keyword(_) => "keyword"
   }
 

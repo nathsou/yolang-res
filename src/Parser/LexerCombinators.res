@@ -23,7 +23,7 @@ let lowerLetter = sat(isLowerCaseLetter)
 let upperLetter = sat(isUpperCaseLetter)
 let letter = sat(isAlpha)
 let digit = sat(isDigit)
-let aphaNum = sat(isAlphaNum)
+let alphaNum = sat(isAlphaNum)
 
 let isSpace = char =>
   switch char {

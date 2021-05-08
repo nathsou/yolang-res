@@ -33,7 +33,15 @@ let ident = satBy(t =>
   }
 )
 
-let var = ident->map(x => Ast.VarExpr(x))
+let globalName = satBy(t =>
+  switch t {
+  | UppercaseIdentifier(n) => Some(n)
+  | Identifier(n) => Some(n)
+  | _ => None
+  }
+)
+
+let var = alt(ident, globalName)->map(x => Ast.VarExpr(x))
 
 let unit = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Ast.ConstExpr(UnitConst))
 
@@ -124,7 +132,7 @@ let lambda = alt(
 )
 
 let assignment = alt(
-  seq3(ident, token(Symbol(Eq)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(x, val)),
+  seq3(globalName, token(Symbol(Eq)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(x, val)),
   lambda,
 )
 
@@ -167,37 +175,37 @@ let exprStmt = then(expr, token(Symbol(SemiColon)))->map(((expr, _)) => Ast.Expr
 
 let letStmt = alt(
   seq5(
-    token(Keyword(Keywords.Let)),
+    alt(token(Keyword(Keywords.Let)), token(Keyword(Keywords.Mut))),
     ident,
     token(Symbol(Eq)),
     expr,
     token(Symbol(SemiColon)),
-  )->map(((_let, x, _eq, e, _)) => Ast.LetStmt(x, false, e)),
+  )->map(((letOrMut, x, _eq, e, _)) => Ast.LetStmt(x, letOrMut == Keyword(Keywords.Mut), e)),
   exprStmt,
 )
 
-let mutStmt = alt(
-  seq5(
-    token(Keyword(Keywords.Mut)),
-    ident,
-    token(Symbol(Eq)),
-    expr,
-    token(Symbol(SemiColon)),
-  )->map(((_, x, _eq, e, _)) => Ast.LetStmt(x, true, e)),
-  letStmt,
-)
-
-stmt := mutStmt.contents
+stmt := letStmt.contents
 
 // declarations
 
-let funDecl =
+let globalDecl =
+  seq5(
+    alt(token(Keyword(Keywords.Let)), token(Keyword(Keywords.Mut))),
+    globalName,
+    token(Symbol(Eq)),
+    expr,
+    token(Symbol(SemiColon)),
+  )->map(((letOrMut, x, _eq, e, _)) => Ast.GlobalDecl(x, letOrMut == Keyword(Keywords.Mut), e))
+
+let funDecl = alt(
   seq4(token(Keyword(Keywords.Fn)), ident, parens(commas(ident)), block)->map(((
     _,
     f,
     args,
     body,
-  )) => Ast.FuncDecl(f, args, body))
+  )) => Ast.FuncDecl(f, args, body)),
+  globalDecl,
+)
 
 decl := funDecl.contents
 

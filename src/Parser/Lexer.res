@@ -12,9 +12,14 @@ let bool = alt(string("true")->map(_ => Bool(true)), string("false")->map(_ => B
 // [a-z_][a-zA-Z0-9_\']*
 let identifier =
   alt(lowerLetter, char('_'))
-  ->then(many(anyOf([aphaNum, char('_'), char('\'')])))
+  ->then(many(anyOf([alphaNum, char('_'), char('\'')])))
   ->map(((h, tl)) => Identifier(
     String.make(1, h) ++ tl->Array.joinWith("", c => String.make(1, c)),
+  ))
+
+let uppercaseIdentifier =
+  many(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(
+    chars->Array.joinWith("", c => String.make(1, c)),
   ))
 
 let keyword = anyOf([
@@ -50,6 +55,6 @@ let symbol = anyOf([
   char('}')->map(_ => Symbol(Rbracket)),
 ])
 
-let token = anyOf([int, bool, keyword, symbol, identifier])
+let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])
 
 let lex = many(seq3(spaces, token, spaces)->map(((_, token, _)) => token))

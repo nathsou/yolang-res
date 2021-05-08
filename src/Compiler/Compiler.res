@@ -4,21 +4,23 @@ open Core
 module CompilerExn = {
   exception InvalidTypeConversion(Types.monoTy)
   exception InvalidFunctionSignature(Types.monoTy)
-  exception LocalNotFound(string)
+  exception VariableNotFound(string)
   exception EmptyFunctionStack
   exception CannotReassignImmutableValue(string)
   exception FunctionNotFound(string)
   exception Unimplemented(string)
+  exception UnsupportedGlobalInitializer(CoreExpr.t)
 
   let show = exn =>
     switch exn {
     | InvalidTypeConversion(ty) => `unsupported type: ${Types.showMonoTy(ty)}`
     | InvalidFunctionSignature(ty) => `invalid function signature: ${Types.showMonoTy(ty)}`
-    | LocalNotFound(x) => `variable "${x}" not found`
+    | VariableNotFound(x) => `variable "${x}" not found`
     | EmptyFunctionStack => "Function stack is empty"
     | CannotReassignImmutableValue(x) => `cannot reassign "${x}" as it is immutable`
     | FunctionNotFound(f) => `no function named "${f}" found`
     | Unimplemented(message) => `unimplemented: ${message}`
+    | UnsupportedGlobalInitializer(expr) => `unsupported global initializer: ${CoreExpr.show(expr)}`
     | _ => "unexpected compiler exception"
     }
 }
@@ -77,11 +79,6 @@ let funcSignatureOf = ty =>
   | _ => raise(CompilerExn.InvalidFunctionSignature(ty))
   }
 
-type localInfo = {
-  index: Wasm.Func.Locals.index,
-  isMutable: bool,
-}
-
 module Func = {
   type t = {
     name: string,
@@ -118,16 +115,13 @@ module Func = {
     self.params->Array.length + self.locals->Array.length - 1
   }
 
-  let findLocal = (self: t, name: string): option<localInfo> => {
+  let findLocal = (self: t, name: string): option<(Wasm.Func.Locals.index, bool)> => {
     switch self.params->Array.getIndexBy(((x, _)) => x == name) {
-    | Some(idx) => Some({index: idx, isMutable: true})
+    | Some(idx) => Some((idx, true))
     | None =>
       switch self.locals->ArrayUtils.getReverseIndexBy(local => local.name == name) {
       | Some(idx) =>
-        Some({
-          index: self.params->Array.length + idx,
-          isMutable: Array.getExn(self.locals, idx).isMutable,
-        })
+        Some((self.params->Array.length + idx, Array.getExn(self.locals, idx).isMutable))
       | None => None
       }
     }
@@ -146,11 +140,34 @@ module Func = {
   }
 }
 
+module Global = {
+  type t = {
+    name: string,
+    isMutable: bool,
+    ty: Wasm.ValueType.t,
+    index: int,
+    init: Wasm.Global.Initializer.t,
+  }
+
+  let make = (name, isMutable, ty, index, init): t => {
+    name: name,
+    isMutable: isMutable,
+    ty: ty->wasmValueTyOf,
+    index: index,
+    init: init,
+  }
+
+  let toWasmGlobal = ({isMutable, ty, init}: t): Wasm.Global.t => {
+    Wasm.Global.make(~isMutable, ty, init)
+  }
+}
+
 type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
   mutable scopeDepth: int,
   funcStack: MutableStack.t<Func.t>,
+  globals: HashMap.String.t<Global.t>,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -182,26 +199,43 @@ let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool
   self->emit(Wasm.Inst.SetLocal(localIndex))
 }
 
-let resolveLocalVar = (self: t, name: string): option<localInfo> => {
+type varInfo = Local(Wasm.Func.Locals.index, bool) | Global(Wasm.Global.index, bool)
+
+let declareGlobal = (self: t, name, isMutable: bool, ty, init): Wasm.Global.index => {
+  let index = self.globals->HashMap.String.size
+  let global = Global.make(name, isMutable, ty, index, init)
+  self.globals->HashMap.String.set(name, global)
+
+  index
+}
+
+let resolveGlobal = (self: t, name: string): option<Global.t> => {
+  self.globals->HashMap.String.get(name)
+}
+
+let resolveVar = (self: t, name: string): option<varInfo> => {
   let f = self->getCurrentFuncExn
-  f->Func.findLocal(name)
+  switch f->Func.findLocal(name) {
+  | Some((localIndex, isMutable)) => Some(Local(localIndex, isMutable))
+  | None => self->resolveGlobal(name)->Option.map(({index, isMutable}) => Global(index, isMutable))
+  }
 }
 
 let emitUnit = (self: t): unit => {
   self->emit(Wasm.Inst.ConstI32(0))
 }
 
+let encodeConstExpr = c => {
+  switch c {
+  | Ast.Expr.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
+  | Ast.Expr.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
+  | Ast.Expr.Const.UnitConst => Wasm.Inst.ConstI32(0)
+  }
+}
+
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
-  | CoreConstExpr(_, c) => {
-      let inst = switch c {
-      | Ast.Expr.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
-      | Ast.Expr.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
-      | Ast.Expr.Const.UnitConst => Wasm.Inst.ConstI32(0)
-      }
-
-      self->emit(inst)
-    }
+  | CoreConstExpr(_, c) => self->emit(encodeConstExpr(c))
   | CoreBinOpExpr(_, lhs, op, rhs) => {
       let opInst = switch op {
       | Token.BinOp.Plus => Wasm.Inst.AddI32
@@ -248,19 +282,26 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
-    switch self->resolveLocalVar(x.contents.newName) {
-    | Some({index}) => self->emit(Wasm.Inst.GetLocal(index))
-    | None => raise(CompilerExn.LocalNotFound(x.contents.name))
+    switch self->resolveVar(x.contents.newName) {
+    | Some(Local(index, _)) => self->emit(Wasm.Inst.GetLocal(index))
+    | Some(Global(index, _)) => self->emit(Wasm.Inst.GetGlobal(index))
+    | None => raise(CompilerExn.VariableNotFound(x.contents.name))
     }
   | CoreAssignmentExpr(x, rhs) =>
-    switch self->resolveLocalVar(x.contents.newName) {
-    | Some({isMutable: false}) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
-    | Some({index}) => {
+    switch self->resolveVar(x.contents.newName) {
+    | Some(Local(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+    | Some(Global(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+    | Some(var) => {
+        let inst = switch var {
+        | Local(index, _) => Wasm.Inst.SetLocal(index)
+        | Global(index, _) => Wasm.Inst.SetGlobal(index)
+        }
+
         self->compileExpr(rhs)
-        self->emit(Wasm.Inst.SetLocal(index))
+        self->emit(inst)
         self->emitUnit
       }
-    | None => raise(CompilerExn.LocalNotFound(x.contents.name))
+    | None => raise(CompilerExn.VariableNotFound(x.contents.name))
     }
   | CoreWhileExpr(cond, body) => {
       self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
@@ -291,7 +332,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       switch lhs {
       | CoreVarExpr(f) =>
-        switch self->resolveLocalVar(f.contents.newName) {
+        switch self->resolveVar(f.contents.newName) {
         | None =>
           switch self->findFuncIndexByName(f.contents.newName) {
           | Some(idx) => {
@@ -369,6 +410,18 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   | CoreFuncDecl(f, args, body) => {
       let _ = self->compileFuncDecl(f, args, body)
     }
+  | CoreGlobalDecl(x, mut, init) => {
+      let init = switch init {
+      | CoreConstExpr(_, c) =>
+        switch encodeConstExpr(c) {
+        | Wasm.Inst.ConstI32(n) => Wasm.Global.Initializer.InitConstI32(n)
+        | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
+        }
+      | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
+      }
+
+      let _ = self->declareGlobal(x.contents.name, mut, x.contents.ty, init)
+    }
   }
 }
 
@@ -378,6 +431,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     funcs: [],
     scopeDepth: 0,
     funcStack: MutableStack.make(),
+    globals: HashMap.String.make(~hintSize=1),
   }
 
   try {
@@ -388,12 +442,18 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
       self.funcs->Array.mapWithIndex((index, _) => index),
     )
 
+    // add globals
+    self.globals->HashMap.String.forEach((_, global) => {
+      self.mod->Wasm.Module.addGlobal(global->Global.toWasmGlobal)
+    })
+
     // add function references
     self.mod->Wasm.Module.addElement(funcRefs)
     self.mod->Wasm.Module.addTable(
       Wasm.Table.make(Wasm.ReferenceType.FuncRef, Wasm.Limits.makeExact(self.funcs->Array.length)),
     )
 
+    // compile function
     self.funcs->Array.forEach(f => {
       let (sig, body) = f->Func.toWasmFunc
       let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)

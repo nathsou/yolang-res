@@ -72,6 +72,7 @@ and rewriteStmt = stmt =>
 and rewriteDecl = decl =>
   switch decl {
   | CoreAst.CoreFuncDecl(f, args, body) => CoreAst.CoreFuncDecl(f, args, rewriteExpr(body))
+  | CoreAst.CoreGlobalDecl(x, mut, init) => CoreAst.CoreGlobalDecl(x, mut, rewriteExpr(init))
   }
 
 // keep a stack of return type of functions to correctly infer the types for
@@ -267,6 +268,10 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
       env,
       CoreFuncExpr(f.contents.ty, Some(f), args, body),
     )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig))
+  | CoreGlobalDecl(x, _, init) =>
+    collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
+      (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
+    })
   }
 }
 

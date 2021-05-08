@@ -1,0 +1,8 @@
+
+let STACK_TOP = 1024;
+mut global2 = 22;
+
+fn main() {
+  global2 = 11;
+  STACK_TOP * global2
+}

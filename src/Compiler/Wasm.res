@@ -193,6 +193,8 @@ module Inst = {
     | Else
     | End
     | Return
+    | GetGlobal(int)
+    | SetGlobal(int)
     | GetLocal(int)
     | SetLocal(int)
     | Call(int)
@@ -256,6 +258,8 @@ module Inst = {
     | Return => (0x0f, "return")
     | GetLocal(idx) => (0x20, "local.get " ++ Int.toString(idx))
     | SetLocal(idx) => (0x21, "local.set " ++ Int.toString(idx))
+    | GetGlobal(idx) => (0x23, "global.get " ++ Int.toString(idx))
+    | SetGlobal(idx) => (0x24, "global.set " ++ Int.toString(idx))
     | Call(funcIdx) => (0x10, "call " ++ Int.toString(funcIdx))
     | CallIndirect(typeIdx, tableIdx) => (
         0x11,
@@ -323,6 +327,8 @@ module Inst = {
     | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
     | GetLocal(n) => Array.concat([inst->opcode], uleb128(n))
     | SetLocal(n) => Array.concat([inst->opcode], uleb128(n))
+    | GetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
+    | SetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
     | If(bt) => [inst->opcode, bt->BlockReturnType.encode]
     | Block(bt) => [inst->opcode, bt->BlockReturnType.encode]
     | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
@@ -541,7 +547,7 @@ module ExportSection = {
 
   let make = (): t => []
 
-  let addExport = (self: t, exp: ExportEntry.t): unit => {
+  let add = (self: t, exp: ExportEntry.t): unit => {
     let _ = self->Js.Array2.push(exp)
   }
 
@@ -611,7 +617,7 @@ module TableSection = {
 
   let make = (): t => []
 
-  let addTable = (self: t, table: Table.t): unit => {
+  let add = (self: t, table: Table.t): unit => {
     let _ = self->Js.Array2.push(table)
   }
 
@@ -656,7 +662,7 @@ module ElementSection = {
 
   let make = (): t => []
 
-  let addElement = (self: t, elem: Element.t): unit => {
+  let add = (self: t, elem: Element.t): unit => {
     let _ = self->Js.Array2.push(elem)
   }
 
@@ -669,11 +675,60 @@ module ElementSection = {
   }
 }
 
+module Global = {
+  module Initializer = {
+    type t = InitConstI32(int) | InitGetGlobal(int)
+
+    let encode = (init: t): Vec.t =>
+      Array.concat(
+        Inst.encode(
+          switch init {
+          | InitConstI32(n) => Inst.ConstI32(n)
+          | InitGetGlobal(idx) => Inst.GetGlobal(idx)
+          },
+        ),
+        Inst.encode(Inst.End),
+      )
+  }
+
+  type t = (ValueType.t, bool, Initializer.t)
+  type index = int
+
+  let make = (~isMutable, ty, init): t => (ty, isMutable, init)
+
+  let show = ((ty, mut, _): t) => {
+    `global ${mut ? "mutable" : "immutable"} ` ++ ty->ValueType.show
+  }
+
+  let encode = ((ty, mut, init): t): Vec.t => {
+    Array.concat([ty->ValueType.encode, mut ? 0x1 : 0x0], init->Initializer.encode)
+  }
+}
+
+module GlobalSection = {
+  type t = array<Global.t>
+
+  let make = (): t => []
+
+  let add = (self: t, global: Global.t): unit => {
+    let _ = self->Js.Array2.push(global)
+  }
+
+  let show = (globals: t) => {
+    Section.show(Section.Global) ++ "\n" ++ globals->Array.joinWith("\n", Global.show)
+  }
+
+  let encode = (globals: t): Vec.t => {
+    Section.encode(Section.Global, Vec.encodeMany(globals->Array.map(Global.encode)))
+  }
+}
+
 module Module = {
   type t = {
     typeSection: TypeSection.t,
     funcSection: FuncSection.t,
     tableSection: TableSection.t,
+    globalSection: GlobalSection.t,
     exportSection: ExportSection.t,
     elementSection: ElementSection.t,
     codeSection: CodeSection.t,
@@ -684,6 +739,7 @@ module Module = {
     typeSection: TypeSection.make(),
     funcSection: FuncSection.make(),
     tableSection: TableSection.make(),
+    globalSection: GlobalSection.make(),
     exportSection: ExportSection.make(),
     elementSection: ElementSection.make(),
     codeSection: CodeSection.make(),
@@ -707,7 +763,7 @@ module Module = {
     body: Func.Body.t,
   ): Func.index => {
     let funcIndex = self->addFunc(sig, body)
-    self.exportSection->ExportSection.addExport(
+    self.exportSection->ExportSection.add(
       ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex),
     )
 
@@ -715,11 +771,15 @@ module Module = {
   }
 
   let addTable = (self: t, table: Table.t): unit => {
-    self.tableSection->TableSection.addTable(table)
+    self.tableSection->TableSection.add(table)
   }
 
   let addElement = (self: t, elem: Element.t): unit => {
-    self.elementSection->ElementSection.addElement(elem)
+    self.elementSection->ElementSection.add(elem)
+  }
+
+  let addGlobal = (self: t, global: Global.t): unit => {
+    self.globalSection->GlobalSection.add(global)
   }
 
   let encode = (self: t): Vec.t => {
@@ -728,6 +788,7 @@ module Module = {
       self.typeSection->TypeSection.encode,
       self.funcSection->FuncSection.encode,
       self.tableSection->TableSection.encode,
+      self.globalSection->GlobalSection.encode,
       self.exportSection->ExportSection.encode,
       self.elementSection->ElementSection.encode,
       self.codeSection->CodeSection.encode,
@@ -739,6 +800,7 @@ module Module = {
       self.typeSection->TypeSection.show,
       self.funcSection->FuncSection.show,
       self.tableSection->TableSection.show,
+      self.globalSection->GlobalSection.show,
       self.exportSection->ExportSection.show,
       self.elementSection->ElementSection.show,
       self.codeSection->CodeSection.show,

@@ -25,7 +25,7 @@ module Ast = {
     | WhileExpr(expr, expr)
     | ReturnExpr(expr)
   and stmt = LetStmt(string, bool, expr) | ExprStmt(expr)
-  and decl = FuncDecl(string, array<string>, expr)
+  and decl = FuncDecl(string, array<string>, expr) | GlobalDecl(string, bool, expr)
 
   let rec showExpr = expr =>
     switch expr {
@@ -61,7 +61,9 @@ module Ast = {
   and showDecl = decl =>
     switch decl {
     | FuncDecl(f, args, body) => `fn ${f}(${args->Array.joinWith(", ", x => x)}) ${showExpr(body)}`
+    | GlobalDecl(x, mut, init) => `${mut ? "mut" : "let"} ${x} = ${showExpr(init)}`
     }
+
   and showStmt = stmt =>
     switch stmt {
     | LetStmt(x, mut, rhs) =>
