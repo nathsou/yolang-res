@@ -76,27 +76,23 @@ module CoreAst = {
         tau,
         "{\n" ++
         Array.concat(
-          stmts->Array.map(showStmt),
+          stmts->Array.map(showStmt(~subst)),
           lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
         )->Array.joinWith(";\n", x => "  " ++ x) ++
         (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
     | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
-    | CoreReturnExpr(expr) => `return ${showExpr(expr)}`
+    | CoreReturnExpr(expr) => "return " ++ withType(typeOfExpr(expr), showExpr(expr))
     | CoreTypeAssertion(expr, _, assertedTy) =>
-      `${showExpr(expr)} as ${Types.showMonoTy(assertedTy)}`
+      `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
     }
   }
 
-  and showStmt = stmt =>
+  and showStmt = (~subst=None, stmt) =>
     switch stmt {
     | CoreLetStmt(x, mut, rhs) =>
-      if mut {
-        `let mut ${x.contents.name} = ${showExpr(rhs)}`
-      } else {
-        `let ${x.contents.name} = ${showExpr(rhs)}`
-      }
-    | CoreExprStmt(expr) => showExpr(expr)
+      `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(rhs, ~subst)}`
+    | CoreExprStmt(expr) => showExpr(expr, ~subst)
     }
 
   and showDecl = (~subst=None, decl: decl): string => {
@@ -123,7 +119,10 @@ module CoreAst = {
         )
       }
     | CoreGlobalDecl(x, mut, init) =>
-      withType(x.contents.ty, `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(init)}`)
+      withType(
+        x.contents.ty,
+        `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(init, ~subst)}`,
+      )
     }
   }
 
@@ -211,25 +210,24 @@ module CoreAst = {
   }
 
   let rec substExpr = (s: Subst.t, expr: expr): expr => {
-    let recCall = substExpr(s)
+    let go = substExpr(s)
     let subst = Subst.substMono(s)
     switch expr {
     | CoreConstExpr(tau, c) => CoreConstExpr(subst(tau), c)
-    | CoreUnaryOpExpr(tau, op, expr) => CoreUnaryOpExpr(subst(tau), op, recCall(expr))
-    | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), recCall(a), op, recCall(b))
+    | CoreUnaryOpExpr(tau, op, expr) => CoreUnaryOpExpr(subst(tau), op, go(expr))
+    | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), go(a), op, go(b))
     | CoreVarExpr(x) => CoreVarExpr(x)
-    | CoreAssignmentExpr(x, val) => CoreAssignmentExpr(x, recCall(val))
-    | CoreFuncExpr(tau, name, args, e) => CoreFuncExpr(subst(tau), name, args, recCall(e))
-    | CoreLetInExpr(tau, x, e1, e2) => CoreLetInExpr(subst(tau), x, recCall(e1), recCall(e2))
-    | CoreAppExpr(tau, lhs, args) => CoreAppExpr(subst(tau), recCall(lhs), args->Array.map(recCall))
+    | CoreAssignmentExpr(lhs, rhs) => CoreAssignmentExpr(go(lhs), go(rhs))
+    | CoreFuncExpr(tau, name, args, e) => CoreFuncExpr(subst(tau), name, args, go(e))
+    | CoreLetInExpr(tau, x, e1, e2) => CoreLetInExpr(subst(tau), x, go(e1), go(e2))
+    | CoreAppExpr(tau, lhs, args) => CoreAppExpr(subst(tau), go(lhs), args->Array.map(go))
     | CoreBlockExpr(tau, exprs, lastExpr) =>
-      CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(recCall))
-    | CoreIfExpr(tau, cond, thenE, elseE) =>
-      CoreIfExpr(subst(tau), recCall(cond), recCall(thenE), recCall(elseE))
-    | CoreWhileExpr(cond, body) => CoreWhileExpr(recCall(cond), recCall(body))
-    | CoreReturnExpr(expr) => CoreReturnExpr(recCall(expr))
+      CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(go))
+    | CoreIfExpr(tau, cond, thenE, elseE) => CoreIfExpr(subst(tau), go(cond), go(thenE), go(elseE))
+    | CoreWhileExpr(cond, body) => CoreWhileExpr(go(cond), go(body))
+    | CoreReturnExpr(expr) => CoreReturnExpr(go(expr))
     | CoreTypeAssertion(expr, originalTy, assertedTy) =>
-      CoreTypeAssertion(recCall(expr), subst(originalTy), subst(assertedTy))
+      CoreTypeAssertion(go(expr), subst(originalTy), subst(assertedTy))
     }
   }
 

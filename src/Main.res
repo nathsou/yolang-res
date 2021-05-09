@@ -38,7 +38,9 @@ let run = (input, output): unit => {
       switch Inferencer.infer(coreProg) {
       | Ok((_, subst)) => {
           Context.substIdentifiers(subst)
-          switch Compiler.compile(coreProg->Array.map(Core.CoreDecl.subst(subst))) {
+          let core = coreProg->Array.map(Core.CoreDecl.subst(subst))
+
+          switch Compiler.compile(core) {
           | Ok(mod) =>
             // Js.log(mod->Wasm.Module.show ++ "\n\n")
             switch output {
@@ -48,13 +50,7 @@ let run = (input, output): unit => {
           | Error(err) => Js.log(err)
           }
         }
-      | Error(err) =>
-        Js.Console.error(
-          `${prog
-            ->Array.map(Core.CoreDecl.from)
-            ->Array.map(Inferencer.rewriteDecl)
-            ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None))}\n\n${err}`,
-        )
+      | Error(err) => Js.Console.error(err)
       }
     }
   | Error(err) => Js.Console.error(err)

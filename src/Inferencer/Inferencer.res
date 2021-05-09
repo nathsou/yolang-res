@@ -22,8 +22,8 @@ let binOpTy = (op: Ast.BinOp.t): polyTy => {
   | Mult => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Div => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Mod => polyOf(funTy([u32Ty, u32Ty], u32Ty))
-  | Equ => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // a -> a -> bool
-  | Neq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // a -> a -> bool
+  | Equ => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // (a, a) -> bool
+  | Neq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // (a, a) -> bool
   | Lss => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Leq => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Gtr => polyOf(funTy([u32Ty, u32Ty], boolTy))
@@ -82,7 +82,7 @@ and rewriteDecl = decl =>
   | CoreAst.CoreGlobalDecl(x, mut, init) => CoreAst.CoreGlobalDecl(x, mut, rewriteExpr(init))
   }
 
-// keep a stack of return type of functions to correctly infer the types for
+// keep a stack of return types of functions to correctly infer the types for
 // function bodies using 'return' expressions
 let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
 
@@ -124,12 +124,14 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         })
       })
     }
-  | CoreUnaryOpExpr(tau, op, expr) =>
-    collectCoreExprTypeSubsts(env, expr)->flatMap(sig => {
-      let opTy = substMono(sig, funTy([CoreExpr.typeOf(expr)], tau))
-      let tau' = Context.freshInstance(unaryOpTy(op))
-      unify(opTy, tau')->map(sig2 => substCompose(sig2, sig))
-    })
+  | CoreUnaryOpExpr(tau, op, expr) => {
+      let tau1 = CoreExpr.typeOf(expr)
+      collectCoreExprTypeSubsts(env, expr)->flatMap(sig => {
+        let sigOpTy = substMono(sig, funTy([tau1], tau))
+        let tau' = Context.freshInstance(unaryOpTy(op))
+        unify(sigOpTy, tau')->map(sig2 => substCompose(sig2, sig))
+      })
+    }
   | CoreBinOpExpr(tau, a, op, b) =>
     collectCoreExprTypeSubsts(env, a)->flatMap(sigA => {
       let sigAGamma = substEnv(sigA, env)

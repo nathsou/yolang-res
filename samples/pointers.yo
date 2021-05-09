@@ -6,8 +6,7 @@ fn read_u32(addr) {
 }
 
 fn write_u32(addr, val) {
-  let a = (addr * SIZEOF_U32) as Ptr<u32>;
-  *a = val;
+  *((addr * SIZEOF_U32) as Ptr<u32>) = val;
 }
 
 fn main() {

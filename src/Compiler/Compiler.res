@@ -400,14 +400,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   | CoreTypeAssertion(expr, originalTy, assertedTy) => {
       open Types
 
-      if originalTy == assertedTy {
-        ()
-      } else {
-        switch (originalTy, assertedTy) {
-        | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
-        | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
-        | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
-        }
+      switch (originalTy, assertedTy) {
+      | _ if originalTy == assertedTy => ()
+      | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
+      | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
+      | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
       }
 
       self->compileExpr(expr)

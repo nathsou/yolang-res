@@ -6,8 +6,7 @@ fn read(addr) {
 }
 
 fn write(addr, val) {
-  let a = addr as Ptr<u32>;
-  *a = val;
+  *(addr as Ptr<u32>) = val;
 }
 
 fn checkPrimeSieve(n, count) {
