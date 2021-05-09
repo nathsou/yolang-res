@@ -24,6 +24,12 @@ let writeModule = (bytes: Js.Typed_array.Uint8Array.t, outFile): unit => {
   writeBytesSync(outFile, bytes)
 }
 
+let time = (f: unit => 'a): ('a, float) => {
+  let start = Js.Date.now()
+  let res = f()
+  (res, Js.Date.now() -. start)
+}
+
 let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
   let instanciate: Js.Typed_array.Uint8Array.t => Js.Promise.t<'a> = %raw(`
     function(bytes) {
@@ -33,12 +39,16 @@ let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
     }
   `)
 
-  let _ = instanciate(bytes)->Js.Promise.then_(mainFn => {
-    // let start = Js.Date.now()
-    Js.log(mainFn())
-    // Js.log(`took ${Float.toString(Js.Date.now() -. start)} ms`)
-    Js.Promise.resolve()
-  }, _)
+  let _ = instanciate(bytes)->Js.Promise.then_(
+    mainFn => {
+      let (res, _took) = time(mainFn)
+      Js.log(res)
+      Js.Promise.resolve()
+    },
+    // Js.log(`took ${Float.toString(took)} ms`)
+
+    _,
+  )
 }
 
 let run = (input, output, opt): unit => {
@@ -64,15 +74,14 @@ let run = (input, output, opt): unit => {
           | Error(err) => Js.Console.error(err)
           }
         }
-      | Error(err) => {
-          // Js.Console.error(
-          //   `${prog
-          //     ->Array.map(Core.CoreDecl.from)
-          //     ->Array.map(Inferencer.rewriteDecl)
-          //     ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(Subst.empty)))}\n\n${err}`,
-          // )
-          Js.Console.error(err)
-        }
+      | Error(err) =>
+        // Js.Console.error(
+        //   `${prog
+        //     ->Array.map(Core.CoreDecl.from)
+        //     ->Array.map(Inferencer.rewriteDecl)
+        //     ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(Subst.empty)))}\n\n${err}`,
+        // )
+        Js.Console.error(err)
       }
     }
   | Error(err) => Js.Console.error(err)

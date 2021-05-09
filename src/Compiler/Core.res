@@ -4,7 +4,7 @@ open Types
 module CoreAst = {
   open Ast
   type rec expr =
-    | CoreConstExpr(monoTy, Const.t)
+    | CoreConstExpr(Const.t)
     | CoreBinOpExpr(monoTy, expr, BinOp.t, expr)
     | CoreUnaryOpExpr(monoTy, UnaryOp.t, expr)
     | CoreVarExpr(Context.nameRef)
@@ -24,7 +24,12 @@ module CoreAst = {
 
   let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
-    | CoreConstExpr(tau, _) => tau
+    | CoreConstExpr(c) =>
+      switch c {
+      | Const.BoolConst(_) => Types.boolTy
+      | Const.U32Const(_) => Types.u32Ty
+      | Const.UnitConst => Types.unitTy
+      }
     | CoreUnaryOpExpr(tau, _, _) => tau
     | CoreBinOpExpr(tau, _, _, _) => tau
     | CoreVarExpr(id) => id.contents.ty
@@ -58,7 +63,7 @@ module CoreAst = {
     let show = arg => showExpr(arg, ~subst)
 
     switch expr {
-    | CoreConstExpr(tau, c) => withType(tau, c->Const.show)
+    | CoreConstExpr(c) => withType(typeOfExpr(expr), c->Const.show)
     | CoreBinOpExpr(tau, a, op, b) => withType(tau, `(${show(a)} ${BinOp.show(op)} ${show(b)})`)
     | CoreUnaryOpExpr(tau, op, expr) => withType(tau, `(${UnaryOp.show(op)}${show(expr)})`)
     | CoreVarExpr(id) => withType(id.contents.ty, id.contents.name)
@@ -133,7 +138,7 @@ module CoreAst = {
     let tau = _ => Lazy.force(__tau)
 
     switch expr {
-    | Ast.ConstExpr(c) => CoreConstExpr(tau(), c)
+    | Ast.ConstExpr(c) => CoreConstExpr(c)
     | UnaryOpExpr(op, b) => CoreUnaryOpExpr(tau(), op, fromExpr(b))
     | BinOpExpr(a, op, b) => CoreBinOpExpr(tau(), fromExpr(a), op, fromExpr(b))
     | VarExpr(x) => CoreVarExpr(getIdentifier(x))
@@ -172,7 +177,7 @@ module CoreAst = {
         tau(),
         fromExpr(cond),
         fromExpr(thenE),
-        elseE->Option.mapWithDefault(CoreConstExpr(unitTy, Const.UnitConst), fromExpr),
+        elseE->Option.mapWithDefault(CoreConstExpr(Const.UnitConst), fromExpr),
       )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
@@ -215,7 +220,7 @@ module CoreAst = {
     let go = substExpr(s)
     let subst = Subst.substMono(s)
     switch expr {
-    | CoreConstExpr(tau, c) => CoreConstExpr(subst(tau), c)
+    | CoreConstExpr(c) => CoreConstExpr(c)
     | CoreUnaryOpExpr(tau, op, expr) => CoreUnaryOpExpr(subst(tau), op, go(expr))
     | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), go(a), op, go(b))
     | CoreVarExpr(x) => CoreVarExpr(x)

@@ -385,10 +385,15 @@ module Func = {
     }
 
     let show = (FuncSig(args, rets)) => {
-      let args = args->Array.joinWith(", ", ValueType.show)
-      let rets = rets->Array.joinWith(", ", ValueType.show)
+      let argsFmt = args->Array.joinWith(", ", ValueType.show)
+      let retsFmt = rets->Array.joinWith(", ", ValueType.show)
 
-      `(${args}) -> ${rets}`
+      switch (args, rets) {
+      | ([_], [_]) => `${argsFmt} -> ${retsFmt}`
+      | ([_], []) => `${argsFmt} -> ()`
+      | (_, []) => `(${argsFmt}) -> ()`
+      | _ => `(${argsFmt}) -> ${retsFmt}`
+      }
     }
   }
 
@@ -471,7 +476,7 @@ module TypeSection = {
   }
 
   let show = (self: t) => {
-    Section.show(Section.Type) ++ ":\n" ++ self->Array.joinWith("\n", Func.Signature.show)
+    Section.show(Section.Type) ++ "\n" ++ self->Array.joinWith("\n", Func.Signature.show)
   }
 }
 
@@ -514,7 +519,7 @@ module CodeSection = {
   }
 
   let show = (self: t) => {
-    Section.show(Section.Code) ++ ":\n" ++ self->Array.joinWith("\n\n", Func.Body.show)
+    Section.show(Section.Code) ++ "\n" ++ self->Array.joinWith("\n\n", Func.Body.show)
   }
 }
 
@@ -577,7 +582,7 @@ module ExportSection = {
   }
 
   let show = (self: t) => {
-    Section.show(Section.Export) ++ ":\n" ++ self->Array.joinWith("\n", ExportEntry.show)
+    Section.show(Section.Export) ++ "\n" ++ self->Array.joinWith("\n", ExportEntry.show)
   }
 }
 

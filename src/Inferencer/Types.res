@@ -33,11 +33,13 @@ let sizeLog2 = (ty: monoTy) =>
   | TyConst("u32", []) => 2
   | TyConst("u64", []) => 3
   | TyConst("bool", []) => 2
-  | TyConst("()", []) => 2
+  | TyConst("()", []) => 0 // Zero Sized Type
   | TyConst("Func", _) => 2
   | TyConst("Ptr", _) => 2
   | _ => 2
   }
+
+let isZeroSizeType = (ty: monoTy) => ty->sizeLog2 == 0
 
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int

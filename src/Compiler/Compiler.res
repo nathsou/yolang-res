@@ -46,28 +46,28 @@ module Local = {
   }
 }
 
-let wasmValueTyOf = (tau: Types.monoTy): Wasm.ValueType.t => {
+let wasmValueTypeOf = (tau: Types.monoTy): option<Wasm.ValueType.t> => {
   open Types
   open Wasm.ValueType
   switch tau {
-  | TyConst("u32", []) => I32
-  | TyConst("u64", []) => I64
-  | TyConst("bool", []) => I32
-  | TyConst("()", []) => I32
-  | TyConst("Fun", _) => I32
-  | TyConst("Ptr", _) => I32
+  | TyConst("u32", []) => Some(I32)
+  | TyConst("u64", []) => Some(I64)
+  | TyConst("bool", []) => Some(I32)
+  | TyConst("()", []) => None
+  | TyConst("Fun", _) => Some(I32)
+  | TyConst("Ptr", _) => Some(I32)
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
 
-let wasmBlockRetTyOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
+let wasmBlockReturnTypeOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
   open Types
   open Wasm.BlockReturnType
   switch tau {
   | TyConst("u32", []) => I32
   | TyConst("u64", []) => I64
   | TyConst("bool", []) => I32
-  | TyConst("()", []) => I32
+  | TyConst("()", []) => Void
   | TyConst("Fun", _) => I32
   | TyConst("Ptr", _) => I32
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
@@ -78,10 +78,10 @@ let funcSignatureOf = ty =>
   switch ty {
   | Types.TyConst("Fun", tys) => {
       let args =
-        tys->Js.Array2.slice(~start=0, ~end_=tys->Array.length - 1)->Array.map(wasmValueTyOf)
-      let ret = tys->Array.get(tys->Array.length - 2)->Option.map(wasmValueTyOf)
+        tys->Js.Array2.slice(~start=0, ~end_=tys->Array.length - 1)->Array.map(wasmValueTypeOf)
+      let ret = tys->Array.get(tys->Array.length - 2)->Option.flatMap(wasmValueTypeOf)
 
-      Wasm.Func.Signature.make(args, ret)
+      Wasm.Func.Signature.make(args->Array.keepMap(x => x), ret)
     }
   | _ => raise(CompilerExn.InvalidFunctionSignature(ty))
   }
@@ -99,7 +99,7 @@ module Func = {
     let self: t = {
       name: name,
       locals: [],
-      params: params,
+      params: params->Array.keep(((_, xTy)) => !(xTy->Types.isZeroSizeType)),
       ret: ret,
       instructions: [],
     }
@@ -136,11 +136,11 @@ module Func = {
 
   let toWasmFunc = (self: t): Wasm.Func.t => {
     let sig = Wasm.Func.Signature.make(
-      self.params->Array.map(((_, xTy)) => xTy->wasmValueTyOf),
-      Some(self.ret->wasmValueTyOf),
+      self.params->Array.keepMap(((_, xTy)) => xTy->wasmValueTypeOf),
+      self.ret->wasmValueTypeOf,
     )
 
-    let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.map(l => wasmValueTyOf(l.ty)))
+    let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.keepMap(l => wasmValueTypeOf(l.ty)))
     let body = Wasm.Func.Body.make(locals, self.instructions->Optimizer.peephole)
 
     Wasm.Func.make(sig, body)
@@ -151,7 +151,7 @@ module Global = {
   type t = {
     name: string,
     isMutable: bool,
-    ty: Wasm.ValueType.t,
+    ty: option<Wasm.ValueType.t>,
     index: int,
     init: Wasm.Global.Initializer.t,
   }
@@ -159,13 +159,13 @@ module Global = {
   let make = (name, isMutable, ty, index, init): t => {
     name: name,
     isMutable: isMutable,
-    ty: ty->wasmValueTyOf,
+    ty: ty->wasmValueTypeOf,
     index: index,
     init: init,
   }
 
-  let toWasmGlobal = ({isMutable, ty, init}: t): Wasm.Global.t => {
-    Wasm.Global.make(~isMutable, ty, init)
+  let toWasmGlobal = ({isMutable, ty, init}: t): option<Wasm.Global.t> => {
+    ty->Option.map(ty => Wasm.Global.make(~isMutable, ty, init))
   }
 }
 
@@ -238,15 +238,11 @@ let resolveVar = (self: t, name: string): option<varInfo> => {
   }
 }
 
-let emitUnit = (self: t): unit => {
-  self->emit(Wasm.Inst.ConstI32(0))
-}
-
 let encodeConstExpr = c => {
   switch c {
-  | Ast.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
-  | Ast.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
-  | Ast.Const.UnitConst => Wasm.Inst.ConstI32(0)
+  | Ast.Const.U32Const(n) => Some(Wasm.Inst.ConstI32(n))
+  | Ast.Const.BoolConst(b) => Some(Wasm.Inst.ConstI32(b ? 1 : 0))
+  | Ast.Const.UnitConst => None
   }
 }
 
@@ -258,7 +254,11 @@ let ensureIsInUnsafeBlock = (self: t): unit => {
 
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
-  | CoreConstExpr(_, c) => self->emit(encodeConstExpr(c))
+  | CoreConstExpr(c) =>
+    switch c->encodeConstExpr {
+    | Some(inst) => self->emit(inst)
+    | None => ()
+    }
   | CoreUnaryOpExpr(_, op, expr) => {
       open Ast.UnaryOp
 
@@ -301,60 +301,73 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       switch lastExpr {
       | Some(expr) => self->compileExpr(expr)
-      | None => self->emitUnit
+      | None => ()
       }
 
       self->endScope
     }
   | CoreIfExpr(tau, cond, thenExpr, elseExpr) => {
-      let retTy = tau->wasmBlockRetTyOf
+      let retTy = tau->wasmBlockReturnTypeOf
       self->compileExpr(cond)
       self->emit(Wasm.Inst.If(retTy))
       self->compileExpr(thenExpr)
-      self->emit(Wasm.Inst.Else)
-      self->compileExpr(elseExpr)
+
+      if elseExpr != CoreConstExpr(Ast.Const.UnitConst) {
+        self->emit(Wasm.Inst.Else)
+        self->compileExpr(elseExpr)
+      }
+
       self->emit(Wasm.Inst.End)
     }
   | CoreLetInExpr(_, x, valExpr, inExpr) => {
       let x = x.contents
-      self->compileExpr(valExpr)
-      self->declareLocalVar(x.name, x.ty, ~isMutable=false)
+      if !(valExpr->CoreAst.typeOfExpr->Types.isZeroSizeType) {
+        self->compileExpr(valExpr)
+        self->declareLocalVar(x.name, x.ty, ~isMutable=false)
+      }
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
-    switch self->resolveVar(x.contents.newName) {
-    | Some(Local(index, _)) => self->emit(Wasm.Inst.GetLocal(index))
-    | Some(Global(index, _)) => self->emit(Wasm.Inst.GetGlobal(index))
-    | None => raise(CompilerExn.VariableNotFound(x.contents.name))
-    }
-  | CoreAssignmentExpr(lhs, rhs) =>
-    switch lhs {
-    | CoreVarExpr(x) =>
+    if x.contents.ty->Types.isZeroSizeType {
+      // accessing a zero sized type is a no-op
+      ()
+    } else {
       switch self->resolveVar(x.contents.newName) {
-      | Some(Local(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
-      | Some(Global(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
-      | Some(var) => {
-          let inst = switch var {
-          | Local(index, _) => Wasm.Inst.SetLocal(index)
-          | Global(index, _) => Wasm.Inst.SetGlobal(index)
-          }
-
-          self->compileExpr(rhs)
-          self->emit(inst)
-          self->emitUnit
-        }
+      | Some(Local(index, _)) => self->emit(Wasm.Inst.GetLocal(index))
+      | Some(Global(index, _)) => self->emit(Wasm.Inst.GetGlobal(index))
       | None => raise(CompilerExn.VariableNotFound(x.contents.name))
       }
-    | CoreUnaryOpExpr(_, Ast.UnaryOp.Deref, expr) => {
-        self->ensureIsInUnsafeBlock
+    }
+  | CoreAssignmentExpr(lhs, rhs) =>
+    if rhs->CoreAst.typeOfExpr->Types.isZeroSizeType {
+      self->compileExpr(rhs)
+    } else {
+      switch lhs {
+      | CoreVarExpr(x) =>
+        switch self->resolveVar(x.contents.newName) {
+        | Some(Local(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+        | Some(Global(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+        | Some(var) => {
+            let inst = switch var {
+            | Local(index, _) => Wasm.Inst.SetLocal(index)
+            | Global(index, _) => Wasm.Inst.SetGlobal(index)
+            }
 
-        self->compileExpr(expr)
-        self->compileExpr(rhs)
-        self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Types.sizeLog2, 0))
-        self->emitUnit
+            self->compileExpr(rhs)
+            self->emit(inst)
+          }
+        | None => raise(CompilerExn.VariableNotFound(x.contents.name))
+        }
+      | CoreUnaryOpExpr(_, Ast.UnaryOp.Deref, expr) => {
+          self->ensureIsInUnsafeBlock
+
+          self->compileExpr(expr)
+          self->compileExpr(rhs)
+          self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Types.sizeLog2, 0))
+        }
+      | _ =>
+        raise(CompilerExn.Unimplemented("[unreachable]: assignement to an invalid lhs expression"))
       }
-    | _ =>
-      raise(CompilerExn.Unimplemented("[unreachable]: assignement to an invalid lhs expression"))
     }
   | CoreWhileExpr(cond, body) => {
       self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
@@ -363,11 +376,9 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emit(Wasm.Inst.EqzI32)
       self->emit(Wasm.Inst.BranchIf(1))
       self->compileExpr(body)
-      self->emit(Wasm.Inst.Drop)
       self->emit(Wasm.Inst.Branch(0))
       self->emit(Wasm.Inst.End)
       self->emit(Wasm.Inst.End)
-      self->emitUnit
     }
   | CoreAppExpr(_, lhs, args) => {
       let callIndirect = () => {
@@ -440,11 +451,17 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
   switch stmt {
   | CoreExprStmt(expr) => {
       self->compileExpr(expr)
-      // drop the return value on the stack
-      self->emit(Wasm.Inst.Drop)
+
+      // drop the return value on the stack if it is not ()
+      switch expr->CoreExpr.typeOf->wasmValueTypeOf {
+      | Some(_) => self->emit(Wasm.Inst.Drop)
+      | None => ()
+      }
     }
-  | CoreLetStmt(x, isMutable, rhs) => {
-      self->compileExpr(rhs)
+  | CoreLetStmt(x, isMutable, rhs) =>
+    self->compileExpr(rhs)
+
+    if !(rhs->CoreAst.typeOfExpr->Types.isZeroSizeType) {
       self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }
@@ -477,9 +494,9 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
     }
   | CoreGlobalDecl(x, mut, init) => {
       let init = switch init {
-      | CoreConstExpr(_, c) =>
+      | CoreConstExpr(c) =>
         switch encodeConstExpr(c) {
-        | Wasm.Inst.ConstI32(n) => Wasm.Global.Initializer.InitConstI32(n)
+        | Some(Wasm.Inst.ConstI32(n)) => Wasm.Global.Initializer.InitConstI32(n)
         | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
         }
       | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
@@ -504,11 +521,14 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(352, None)))
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(41, None)))
 
     // add globals
     self.globals->HashMap.String.forEach((_, global) => {
-      self.mod->Wasm.Module.addGlobal(global->Global.toWasmGlobal)
+      switch global->Global.toWasmGlobal {
+      | Some(global) => self.mod->Wasm.Module.addGlobal(global)
+      | None => ()
+      }
     })
 
     // add function references

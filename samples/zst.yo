@@ -1,0 +1,11 @@
+
+fn takeUnit(unit1, unit2, a, unit3, b) {
+  let u1: () = unit1;
+  let u2: () = unit2;
+  let u3: () = unit3;
+  a * b
+}
+
+fn main() {
+  takeUnit((), (), 3, (), 7)
+}

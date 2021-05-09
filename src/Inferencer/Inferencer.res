@@ -57,7 +57,7 @@ let rec rewriteExpr = expr => {
               tau,
               x,
               rewriteExpr(e),
-              aux(tl)->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Const.UnitConst), x => x),
+              aux(tl)->Option.mapWithDefault(CoreConstExpr(Ast.Const.UnitConst), x => x),
             ),
           )
         | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl), safety))
@@ -101,9 +101,9 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   open Result
 
   switch expr {
-  | CoreConstExpr(tau, c) =>
+  | CoreConstExpr(c) =>
     let tau' = Context.freshInstance(constTy(c))
-    unify(tau, tau')
+    unify(expr->CoreExpr.typeOf, tau')
   | CoreVarExpr(x) =>
     let x = x.contents
     switch env->Env.get(x.name) {
