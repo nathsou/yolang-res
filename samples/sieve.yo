@@ -2,11 +2,11 @@
 let SIZEOF_U32 = 4;
 
 fn read(addr) {
-  *((addr * SIZEOF_U32) as Ptr<u32>)
+  *(addr as Ptr<u32>)
 }
 
 fn write(addr, val) {
-  let a = (addr * SIZEOF_U32) as Ptr<u32>;
+  let a = addr as Ptr<u32>;
   *a = val;
 }
 
