@@ -11,6 +11,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "binaryen": "^101.0.0"
+  },
   "devDependencies": {
     "rescript": "^9.1.2"
   }

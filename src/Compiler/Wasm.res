@@ -848,6 +848,10 @@ module Module = {
     ])
   }
 
+  let encodeAsUint8Array = (self: t): Js.Typed_array.Uint8Array.t => {
+    %raw(`(bytes => Uint8Array.from(bytes))`)(self->encode)
+  }
+
   let show = (self: t) => {
     [
       self.typeSection->TypeSection.show,

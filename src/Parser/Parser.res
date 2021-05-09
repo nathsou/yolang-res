@@ -191,7 +191,7 @@ let lambda = alt(
 
 let assignment = chainLeft(lambda, token(Symbol(Eq)), (a, _, b) => Ast.AssignmentExpr(a, b))
 
-let implicitStms = keepBy(expr, expr =>
+let implicitStmts = keepBy(expr, expr =>
   switch expr {
   | Ast.IfExpr(_, _, _) => Some((true, Ast.ExprStmt(expr)))
   | Ast.WhileExpr(_, _) => Some((true, Ast.ExprStmt(expr)))
@@ -204,7 +204,7 @@ block :=
     seq5(
       optional(token(Keyword(Keywords.Unsafe))),
       token(Symbol(Lbracket)),
-      many(alt(stmt->map(s => (false, s)), implicitStms)),
+      many(alt(stmt->map(s => (false, s)), implicitStmts)),
       optional(expr),
       token(Symbol(Rbracket)),
     )->map(((safety, _, stmts, lastExpr, _)) => {
