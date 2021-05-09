@@ -48,7 +48,13 @@ let run = (input, output): unit => {
           | Error(err) => Js.log(err)
           }
         }
-      | Error(err) => Js.Console.error(`${prog->Array.joinWith("\n\n", Ast.Decl.show)}\n\n${err}`)
+      | Error(err) =>
+        Js.Console.error(
+          `${prog
+            ->Array.map(Core.CoreDecl.from)
+            ->Array.map(Inferencer.rewriteDecl)
+            ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=None))}\n\n${err}`,
+        )
       }
     }
   | Error(err) => Js.Console.error(err)
