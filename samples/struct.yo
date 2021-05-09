@@ -24,7 +24,7 @@ fn getMax(s) unsafe {
   *(((s as u32) + 4) as Ptr<u32>)
 }
 
-fn createMinMaxStruct(min, max) unsafe {
+fn createMinMaxStruct(min, max) {
   STACK_TOP = STACK_TOP - MINMAX_STRUCT_SIZE;
   let addr = STACK_TOP as Ptr<u32>;
   setMin(addr, min);

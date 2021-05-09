@@ -201,6 +201,7 @@ module Inst = {
     | SetGlobal(int)
     | GetLocal(int)
     | SetLocal(int)
+    | TeeLocal(int)
     | Call(int)
     | CallIndirect(int, int)
     | LoadI32(alignmentHint, addrOffset)
@@ -264,6 +265,7 @@ module Inst = {
     | Return => (0x0f, "return")
     | GetLocal(idx) => (0x20, "local.get " ++ Int.toString(idx))
     | SetLocal(idx) => (0x21, "local.set " ++ Int.toString(idx))
+    | TeeLocal(idx) => (0x22, "local.tee " ++ Int.toString(idx))
     | GetGlobal(idx) => (0x23, "global.get " ++ Int.toString(idx))
     | SetGlobal(idx) => (0x24, "global.set " ++ Int.toString(idx))
     | Call(funcIdx) => (0x10, "call " ++ Int.toString(funcIdx))
@@ -341,6 +343,7 @@ module Inst = {
     | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
     | GetLocal(n) => Array.concat([inst->opcode], uleb128(n))
     | SetLocal(n) => Array.concat([inst->opcode], uleb128(n))
+    | TeeLocal(n) => Array.concat([inst->opcode], uleb128(n))
     | GetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
     | SetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
     | If(bt) => [inst->opcode, bt->BlockReturnType.encode]
