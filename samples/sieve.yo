@@ -1,11 +1,11 @@
 
 let SIZEOF_U32 = 4;
 
-fn read(addr) {
+fn read(addr) unsafe {
   *(addr as Ptr<u32>)
 }
 
-fn write(addr, val) {
+fn write(addr, val) unsafe {
   *(addr as Ptr<u32>) = val;
 }
 
@@ -31,7 +31,7 @@ fn countPrimesLessThan(m) {
 
   while i <= m {
     if checkPrimeSieve(i, count) {
-      count = count + 1
+      count = count + 1;
     }
 
     i = i + 2;

@@ -201,17 +201,19 @@ let implicitStms = keepBy(expr, expr =>
 
 block :=
   alt(
-    seq4(
+    seq5(
+      optional(token(Keyword(Keywords.Unsafe))),
       token(Symbol(Lbracket)),
       many(alt(stmt->map(s => (false, s)), implicitStms)),
       optional(expr),
       token(Symbol(Rbracket)),
-    )->map(((_, stmts, lastExpr, _)) => {
+    )->map(((safety, _, stmts, lastExpr, _)) => {
       let ss = stmts->Array.map(((_, s)) => s)
+      let safety = safety->Option.mapWithDefault(Safe, _ => Unsafe)
       switch stmts->Array.get(stmts->Array.length - 1) {
       | Some((isImplicit, Ast.ExprStmt(expr))) if isImplicit && lastExpr->Option.isNone =>
-        Ast.BlockExpr(ss->Array.slice(~offset=0, ~len=stmts->Array.length - 2), Some(expr))
-      | _ => Ast.BlockExpr(ss, lastExpr)
+        Ast.BlockExpr(ss->Array.slice(~offset=0, ~len=stmts->Array.length - 2), Some(expr), safety)
+      | _ => Ast.BlockExpr(ss, lastExpr, safety)
       }
     }),
     assignment,

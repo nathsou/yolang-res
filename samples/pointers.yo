@@ -1,11 +1,11 @@
 
 let SIZEOF_U32 = 4;
 
-fn read_u32(addr) {
+fn read_u32(addr) unsafe {
   *((addr * SIZEOF_U32) as Ptr<u32>)
 }
 
-fn write_u32(addr, val) {
+fn write_u32(addr, val) unsafe {
   *((addr * SIZEOF_U32) as Ptr<u32>) = val;
 }
 

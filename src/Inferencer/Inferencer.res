@@ -48,7 +48,7 @@ let rec rewriteExpr = expr => {
   open CoreAst
 
   switch expr {
-  | CoreBlockExpr(tau, stmts, lastExpr) => {
+  | CoreBlockExpr(tau, stmts, lastExpr, safety) => {
       let rec aux = stmts =>
         switch stmts {
         | list{CoreLetStmt(x, _, e), ...tl} =>
@@ -60,11 +60,11 @@ let rec rewriteExpr = expr => {
               aux(tl)->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Const.UnitConst), x => x),
             ),
           )
-        | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl)))
+        | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl), safety))
         | list{} => lastExpr->Option.map(rewriteExpr)
         }
 
-      CoreBlockExpr(tau, [], aux(stmts->List.fromArray))
+      CoreBlockExpr(tau, [], aux(stmts->List.fromArray), safety)
     }
   | _ => expr
   }
@@ -142,7 +142,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         unify(opTy, tau')->map(sig => substCompose(sig, sigBA))
       })
     })
-  | CoreBlockExpr(tau, stmts, lastExpr) => {
+  | CoreBlockExpr(tau, stmts, lastExpr, _) => {
       open Array
 
       stmts

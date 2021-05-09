@@ -47,10 +47,16 @@ let run = (input, output): unit => {
             | Some(outFile) => mod->writeModule(outFile)
             | None => mod->runModule
             }
-          | Error(err) => Js.log(err)
+          | Error(err) => Js.Console.error(err)
           }
         }
-      | Error(err) => Js.Console.error(err)
+      | Error(err) =>
+        Js.Console.error(
+          `${prog
+            ->Array.map(Core.CoreDecl.from)
+            ->Array.map(Inferencer.rewriteDecl)
+            ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(Subst.empty)))}\n\n${err}`,
+        )
       }
     }
   | Error(err) => Js.Console.error(err)

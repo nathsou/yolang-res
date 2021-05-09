@@ -12,7 +12,7 @@ module CoreAst = {
     | CoreFuncExpr(monoTy, option<Context.nameRef>, array<Context.nameRef>, expr)
     | CoreLetInExpr(monoTy, Context.nameRef, expr, expr)
     | CoreAppExpr(monoTy, expr, array<expr>)
-    | CoreBlockExpr(monoTy, array<stmt>, option<expr>)
+    | CoreBlockExpr(monoTy, array<stmt>, option<expr>, blockSafety)
     | CoreIfExpr(monoTy, expr, expr, expr)
     | CoreWhileExpr(expr, expr)
     | CoreReturnExpr(expr)
@@ -32,7 +32,7 @@ module CoreAst = {
     | CoreFuncExpr(tau, _, _, _) => tau
     | CoreLetInExpr(tau, _, _, _) => tau
     | CoreAppExpr(tau, _, _) => tau
-    | CoreBlockExpr(tau, _, _) => tau
+    | CoreBlockExpr(tau, _, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
     | CoreReturnExpr(expr) => typeOfExpr(expr)
@@ -71,9 +71,10 @@ module CoreAst = {
       withType(tau, `(${show(f)})(${args->Array.joinWith(", ", show)})`)
     | CoreIfExpr(tau, cond, thenE, elseE) =>
       withType(tau, `if ${show(cond)} ${show(thenE)} else ${show(elseE)}`)
-    | CoreBlockExpr(tau, stmts, lastExpr) =>
+    | CoreBlockExpr(tau, stmts, lastExpr, safety) =>
       withType(
         tau,
+        (safety == Unsafe ? "unsafe " : "") ++
         "{\n" ++
         Array.concat(
           stmts->Array.map(showStmt(~subst)),
@@ -158,11 +159,12 @@ module CoreAst = {
       | _ => CoreLetInExpr(tau(), freshIdentifier(x), fromExpr(e1), fromExpr(e2))
       }
     | AppExpr(f, args) => CoreAppExpr(tau(), fromExpr(f), args->Array.map(arg => fromExpr(arg)))
-    | BlockExpr(stmts, lastExpr) =>
+    | BlockExpr(stmts, lastExpr, safety) =>
       switch (stmts, lastExpr) {
       // simplify { e1 } into e1
-      | ([], Some(e1)) => fromExpr(e1)
-      | _ => CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr))
+      | ([], Some(e1)) if safety == Safe => fromExpr(e1)
+      | _ =>
+        CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr), safety)
       }
     | IfExpr(cond, thenE, elseE) =>
       // if the else expression is missing, replace it by unit
@@ -221,8 +223,8 @@ module CoreAst = {
     | CoreFuncExpr(tau, name, args, e) => CoreFuncExpr(subst(tau), name, args, go(e))
     | CoreLetInExpr(tau, x, e1, e2) => CoreLetInExpr(subst(tau), x, go(e1), go(e2))
     | CoreAppExpr(tau, lhs, args) => CoreAppExpr(subst(tau), go(lhs), args->Array.map(go))
-    | CoreBlockExpr(tau, exprs, lastExpr) =>
-      CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(go))
+    | CoreBlockExpr(tau, exprs, lastExpr, safety) =>
+      CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(go), safety)
     | CoreIfExpr(tau, cond, thenE, elseE) => CoreIfExpr(subst(tau), go(cond), go(thenE), go(elseE))
     | CoreWhileExpr(cond, body) => CoreWhileExpr(go(cond), go(body))
     | CoreReturnExpr(expr) => CoreReturnExpr(go(expr))

@@ -52,6 +52,8 @@ module Const = {
     }
 }
 
+type blockSafety = Safe | Unsafe
+
 module Ast = {
   type rec expr =
     | ConstExpr(Const.t)
@@ -62,7 +64,7 @@ module Ast = {
     | FuncExpr(array<string>, expr)
     | LetInExpr(string, expr, expr)
     | AppExpr(expr, array<expr>)
-    | BlockExpr(array<stmt>, option<expr>)
+    | BlockExpr(array<stmt>, option<expr>, blockSafety)
     | IfExpr(expr, expr, option<expr>)
     | WhileExpr(expr, expr)
     | ReturnExpr(expr)
@@ -92,7 +94,8 @@ module Ast = {
         }
       }
     | AppExpr(f, args) => `(${showExpr(f)})(${args->Array.joinWith(", ", showExpr)})`
-    | BlockExpr(stmts, lastExpr) =>
+    | BlockExpr(stmts, lastExpr, safety) =>
+      (safety == Unsafe ? "unsafe " : "") ++
       "{\n" ++
       Array.concat(
         stmts->Array.map(showStmt),

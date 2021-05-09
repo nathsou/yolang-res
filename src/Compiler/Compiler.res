@@ -11,6 +11,7 @@ module CompilerExn = {
   exception Unimplemented(string)
   exception UnsupportedGlobalInitializer(CoreExpr.t)
   exception InvalidTypeAssertion(Types.monoTy, Types.monoTy)
+  exception DerefUsedOutsideOfUnsafeBlock
 
   let show = exn =>
     switch exn {
@@ -24,6 +25,7 @@ module CompilerExn = {
     | UnsupportedGlobalInitializer(expr) => `unsupported global initializer: ${CoreExpr.show(expr)}`
     | InvalidTypeAssertion(a, b) =>
       `invalid type assertion from ${Types.showMonoTy(a)} to ${Types.showMonoTy(b)}`
+    | DerefUsedOutsideOfUnsafeBlock => `the deref operator can only be used in an unsafe block`
     | _ => "unexpected compiler exception"
     }
 }
@@ -173,6 +175,7 @@ type t = {
   mutable scopeDepth: int,
   funcStack: MutableStack.t<Func.t>,
   globals: HashMap.String.t<Global.t>,
+  unsafeBlockStack: MutableStack.t<bool>,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -190,12 +193,21 @@ let emit = (self: t, inst: Wasm.Inst.t): unit => {
   self->getCurrentFuncExn->Func.emit(inst)
 }
 
-let beginScope = (self: t) => {
-  self.scopeDepth = self.scopeDepth + 1
+let isInUnsafeBlock = (self: t): bool => {
+  switch self.unsafeBlockStack->MutableStack.top {
+  | Some(isUnsafe) => isUnsafe
+  | None => false
+  }
 }
 
-let endScope = (self: t) => {
+let beginScope = (self: t, isUnsafe: bool): unit => {
+  self.scopeDepth = self.scopeDepth + 1
+  self.unsafeBlockStack->MutableStack.push(isUnsafe || self->isInUnsafeBlock)
+}
+
+let endScope = (self: t): unit => {
   self.scopeDepth = self.scopeDepth - 1
+  let _ = self.unsafeBlockStack->MutableStack.pop
 }
 
 let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool): unit => {
@@ -238,6 +250,12 @@ let encodeConstExpr = c => {
   }
 }
 
+let ensureIsInUnsafeBlock = (self: t): unit => {
+  if !(self->isInUnsafeBlock) {
+    raise(CompilerExn.DerefUsedOutsideOfUnsafeBlock)
+  }
+}
+
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(_, c) => self->emit(encodeConstExpr(c))
@@ -247,7 +265,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       let opInst = switch op {
       | Neg => raise(CompilerExn.Unimplemented("u32 negation is not handled"))
       | Not => Wasm.Inst.EqzI32
-      | Deref => Wasm.Inst.LoadI32(expr->CoreAst.typeOfExpr->Types.sizeLog2, 0)
+      | Deref => {
+          self->ensureIsInUnsafeBlock
+
+          Wasm.Inst.LoadI32(expr->CoreAst.typeOfExpr->Types.sizeLog2, 0)
+        }
       }
 
       self->compileExpr(expr)
@@ -273,8 +295,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->compileExpr(rhs)
       self->emit(opInst)
     }
-  | CoreBlockExpr(_, stmts, lastExpr) => {
-      self->beginScope
+  | CoreBlockExpr(_, stmts, lastExpr, safety) => {
+      self->beginScope(safety == Ast.Unsafe)
       stmts->Array.forEach(self->compileStmt)
 
       switch lastExpr {
@@ -324,6 +346,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       | None => raise(CompilerExn.VariableNotFound(x.contents.name))
       }
     | CoreUnaryOpExpr(_, Ast.UnaryOp.Deref, expr) => {
+        self->ensureIsInUnsafeBlock
+
         self->compileExpr(expr)
         self->compileExpr(rhs)
         self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Types.sizeLog2, 0))
@@ -473,6 +497,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     scopeDepth: 0,
     funcStack: MutableStack.make(),
     globals: HashMap.String.make(~hintSize=1),
+    unsafeBlockStack: MutableStack.make(),
   }
 
   try {
