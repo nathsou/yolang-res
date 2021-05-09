@@ -74,7 +74,7 @@ let funcType = alt(
 )
 
 let compoundType = alt(
-  seq4(uppercaseIdent, token(BinaryOp(Lss)), commas(type_), token(BinaryOp(Gtr)))->map(((
+  seq4(uppercaseIdent, token(Symbol(Lss)), commas(type_), token(Symbol(Gtr)))->map(((
     name,
     _,
     params,
@@ -104,32 +104,40 @@ let app = alt(
   primary,
 )
 
+let unaryOp = anyOf([
+  token(Symbol(Symbol.Star))->map(_ => UnaryOp.Deref),
+  token(Symbol(Symbol.Minus))->map(_ => UnaryOp.Neg),
+  token(Symbol(Symbol.Bang))->map(_ => UnaryOp.Not),
+])
+
 let addOp = alt(
-  token(BinaryOp(BinOp.Plus))->map(_ => BinOp.Plus),
-  token(BinaryOp(BinOp.Sub))->map(_ => BinOp.Sub),
+  token(Symbol(Symbol.Plus))->map(_ => BinOp.Plus),
+  token(Symbol(Symbol.Minus))->map(_ => BinOp.Sub),
 )
 
 let multOp = anyOf([
-  token(BinaryOp(BinOp.Mult))->map(_ => BinOp.Mult),
-  token(BinaryOp(BinOp.Div))->map(_ => BinOp.Div),
-  token(BinaryOp(BinOp.Mod))->map(_ => BinOp.Mod),
+  token(Symbol(Symbol.Star))->map(_ => BinOp.Mult),
+  token(Symbol(Symbol.Div))->map(_ => BinOp.Div),
+  token(Symbol(Symbol.Percent))->map(_ => BinOp.Mod),
 ])
 
 let comparisonOp = anyOf([
-  token(BinaryOp(BinOp.Lss))->map(_ => BinOp.Lss),
-  token(BinaryOp(BinOp.Leq))->map(_ => BinOp.Leq),
-  token(BinaryOp(BinOp.Gtr))->map(_ => BinOp.Gtr),
-  token(BinaryOp(BinOp.Geq))->map(_ => BinOp.Geq),
+  token(Symbol(Symbol.Lss))->map(_ => BinOp.Lss),
+  token(Symbol(Symbol.Leq))->map(_ => BinOp.Leq),
+  token(Symbol(Symbol.Gtr))->map(_ => BinOp.Gtr),
+  token(Symbol(Symbol.Geq))->map(_ => BinOp.Geq),
 ])
 
 let eqOp = alt(
-  token(BinaryOp(BinOp.EqEq))->map(_ => BinOp.EqEq),
-  token(BinaryOp(BinOp.Neq))->map(_ => BinOp.Neq),
+  token(Symbol(Symbol.EqEq))->map(_ => BinOp.Equ),
+  token(Symbol(Symbol.Neq))->map(_ => BinOp.Neq),
 )
 
 let factor = app
 
-let term = chainLeft(factor, multOp, (a, op, b) => BinOpExpr(a, op, b))
+let unary = alt(then(unaryOp, factor)->map(((op, expr)) => Ast.UnaryOpExpr(op, expr)), factor)
+
+let term = chainLeft(unary, multOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let arith = chainLeft(term, addOp, (a, op, b) => BinOpExpr(a, op, b))
 
@@ -181,10 +189,7 @@ let lambda = alt(
   letIn,
 )
 
-let assignment = alt(
-  seq3(globalName, token(Symbol(Eq)), expr)->map(((x, _, val)) => Ast.AssignmentExpr(x, val)),
-  lambda,
-)
+let assignment = chainLeft(lambda, token(Symbol(Eq)), (a, _, b) => Ast.AssignmentExpr(a, b))
 
 let implicitStms = keepBy(expr, expr =>
   switch expr {

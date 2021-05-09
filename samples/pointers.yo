@@ -1,5 +1,23 @@
 
+let SIZEOF_U32 = 4;
+
+fn read_u32(addr) {
+  *((addr * SIZEOF_U32) as Ptr<u32>)
+}
+
+fn write_u32(addr, val) {
+  let a = (addr * SIZEOF_U32) as Ptr<u32>;
+  *a = val;
+}
+
 fn main() {
-  let p = 4 as u32;
-  p
+  let square = n -> n * n;
+
+  mut i = 0;
+  while i < 100 {
+    write_u32(i, square(i));
+    i = i + 1;
+  }
+
+  read_u32(42) // 1764
 }

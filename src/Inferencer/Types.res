@@ -26,7 +26,18 @@ let unitTy = TyConst("()", [])
 
 let funTy = (args, ret) => TyConst("Fun", Array.concat(args, [ret]))
 
-let pointerTy = ty => TyConst("Pointer", [ty])
+let pointerTy = ty => TyConst("Ptr", [ty])
+
+let sizeLog2 = (ty: monoTy) =>
+  switch ty {
+  | TyConst("u32", []) => 2
+  | TyConst("u64", []) => 3
+  | TyConst("bool", []) => 2
+  | TyConst("()", []) => 2
+  | TyConst("Func", _) => 2
+  | TyConst("Ptr", _) => 2
+  | _ => 2
+  }
 
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int

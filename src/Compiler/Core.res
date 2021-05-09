@@ -4,10 +4,11 @@ open Types
 module CoreAst = {
   open Ast
   type rec expr =
-    | CoreConstExpr(monoTy, Ast.Const.t)
-    | CoreBinOpExpr(monoTy, expr, Token.BinOp.t, expr)
+    | CoreConstExpr(monoTy, Const.t)
+    | CoreBinOpExpr(monoTy, expr, BinOp.t, expr)
+    | CoreUnaryOpExpr(monoTy, UnaryOp.t, expr)
     | CoreVarExpr(Context.nameRef)
-    | CoreAssignmentExpr(Context.nameRef, expr)
+    | CoreAssignmentExpr(expr, expr)
     | CoreFuncExpr(monoTy, option<Context.nameRef>, array<Context.nameRef>, expr)
     | CoreLetInExpr(monoTy, Context.nameRef, expr, expr)
     | CoreAppExpr(monoTy, expr, array<expr>)
@@ -21,9 +22,10 @@ module CoreAst = {
     | CoreGlobalDecl(Context.nameRef, bool, expr)
   and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
 
-  let rec tyVarOfExpr = (expr: expr): monoTy => {
+  let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
     | CoreConstExpr(tau, _) => tau
+    | CoreUnaryOpExpr(tau, _, _) => tau
     | CoreBinOpExpr(tau, _, _, _) => tau
     | CoreVarExpr(id) => id.contents.ty
     | CoreAssignmentExpr(_, _) => unitTy
@@ -33,14 +35,14 @@ module CoreAst = {
     | CoreBlockExpr(tau, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
-    | CoreReturnExpr(expr) => tyVarOfExpr(expr)
+    | CoreReturnExpr(expr) => typeOfExpr(expr)
     | CoreTypeAssertion(_, _, assertedTy) => assertedTy
     }
   }
 
-  let tyVarOfStmt = (stmt: stmt): monoTy => {
+  let typeOfStmt = (stmt: stmt): monoTy => {
     switch stmt {
-    | CoreExprStmt(expr) => tyVarOfExpr(expr)
+    | CoreExprStmt(expr) => typeOfExpr(expr)
     | CoreLetStmt(_, _, _) => unitTy
     }
   }
@@ -56,11 +58,11 @@ module CoreAst = {
     let show = arg => showExpr(arg, ~subst)
 
     switch expr {
-    | CoreConstExpr(tau, c) => withType(tau, c->Ast.Const.show)
-    | CoreBinOpExpr(tau, a, op, b) =>
-      withType(tau, `(${show(a)} ${Token.BinOp.show(op)} ${show(b)})`)
+    | CoreConstExpr(tau, c) => withType(tau, c->Const.show)
+    | CoreBinOpExpr(tau, a, op, b) => withType(tau, `(${show(a)} ${BinOp.show(op)} ${show(b)})`)
+    | CoreUnaryOpExpr(tau, op, expr) => withType(tau, `(${UnaryOp.show(op)}${show(expr)})`)
     | CoreVarExpr(id) => withType(id.contents.ty, id.contents.name)
-    | CoreAssignmentExpr(x, val) => withType(tyVarOfExpr(val), `${x.contents.name} = ${show(val)}`)
+    | CoreAssignmentExpr(lhs, rhs) => withType(typeOfExpr(rhs), `${show(lhs)} = ${show(rhs)}`)
     | CoreFuncExpr(tau, _, args, body) =>
       withType(tau, `(${args->Array.joinWith(", ", x => x.contents.name)}) -> ${show(body)}`)
     | CoreLetInExpr(tau, x, valExpr, inExpr) =>
@@ -132,9 +134,10 @@ module CoreAst = {
 
     switch expr {
     | Ast.ConstExpr(c) => CoreConstExpr(tau(), c)
+    | UnaryOpExpr(op, b) => CoreUnaryOpExpr(tau(), op, fromExpr(b))
     | BinOpExpr(a, op, b) => CoreBinOpExpr(tau(), fromExpr(a), op, fromExpr(b))
     | VarExpr(x) => CoreVarExpr(getIdentifier(x))
-    | AssignmentExpr(x, val) => CoreAssignmentExpr(getIdentifier(x), fromExpr(val))
+    | AssignmentExpr(lhs, rhs) => CoreAssignmentExpr(fromExpr(lhs), fromExpr(rhs))
     | FuncExpr(args, body) =>
       switch args {
       | [] => CoreFuncExpr(tau(), None, [freshIdentifier("__x")], fromExpr(body))
@@ -168,7 +171,7 @@ module CoreAst = {
         tau(),
         fromExpr(cond),
         fromExpr(thenE),
-        elseE->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Const.UnitConst), fromExpr),
+        elseE->Option.mapWithDefault(CoreConstExpr(unitTy, Const.UnitConst), fromExpr),
       )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
@@ -212,6 +215,7 @@ module CoreAst = {
     let subst = Subst.substMono(s)
     switch expr {
     | CoreConstExpr(tau, c) => CoreConstExpr(subst(tau), c)
+    | CoreUnaryOpExpr(tau, op, expr) => CoreUnaryOpExpr(subst(tau), op, recCall(expr))
     | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), recCall(a), op, recCall(b))
     | CoreVarExpr(x) => CoreVarExpr(x)
     | CoreAssignmentExpr(x, val) => CoreAssignmentExpr(x, recCall(val))
@@ -250,7 +254,7 @@ module CoreExpr = {
   let show = CoreAst.showExpr
   let from = CoreAst.fromExpr
   let subst = CoreAst.substExpr
-  let tyVarOf = CoreAst.tyVarOfExpr
+  let typeOf = CoreAst.typeOfExpr
 }
 
 module CoreDecl = {
@@ -267,5 +271,5 @@ module CoreStmt = {
   let show = CoreAst.showStmt
   let from = CoreAst.fromStmt
   let subst = CoreAst.substStmt
-  let tyVarOf = CoreAst.tyVarOfStmt
+  let typeOf = CoreAst.typeOfStmt
 }

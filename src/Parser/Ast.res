@@ -1,22 +1,64 @@
 open Belt
 
+module BinOp = {
+  type t =
+    | Plus
+    | Sub
+    | Mult
+    | Div
+    | Mod
+    | Lss
+    | Leq
+    | Gtr
+    | Geq
+    | Equ
+    | Neq
+
+  let show = op =>
+    switch op {
+    | Plus => "+"
+    | Sub => "-"
+    | Mult => "*"
+    | Div => "/"
+    | Mod => "%"
+    | Lss => "<"
+    | Leq => "<="
+    | Gtr => ">"
+    | Geq => ">="
+    | Equ => "=="
+    | Neq => "!="
+    }
+}
+
+module UnaryOp = {
+  type t = Neg | Not | Deref
+
+  let show = op =>
+    switch op {
+    | Neg => "-"
+    | Not => "!"
+    | Deref => "*"
+    }
+}
+
+module Const = {
+  type t = U32Const(int) | BoolConst(bool) | UnitConst
+
+  let show = c =>
+    switch c {
+    | U32Const(n) => Int.toString(n)
+    | BoolConst(b) => b ? "true" : "false"
+    | UnitConst => "()"
+    }
+}
+
 module Ast = {
-  module Const = {
-    type t = U32Const(int) | BoolConst(bool) | UnitConst
-
-    let show = c =>
-      switch c {
-      | U32Const(n) => Int.toString(n)
-      | BoolConst(b) => b ? "true" : "false"
-      | UnitConst => "()"
-      }
-  }
-
   type rec expr =
     | ConstExpr(Const.t)
-    | BinOpExpr(expr, Token.BinOp.t, expr)
+    | UnaryOpExpr(UnaryOp.t, expr)
+    | BinOpExpr(expr, BinOp.t, expr)
     | VarExpr(string)
-    | AssignmentExpr(string, expr)
+    | AssignmentExpr(expr, expr)
     | FuncExpr(array<string>, expr)
     | LetInExpr(string, expr, expr)
     | AppExpr(expr, array<expr>)
@@ -30,10 +72,11 @@ module Ast = {
 
   let rec showExpr = expr =>
     switch expr {
-    | BinOpExpr(a, op, b) => `(${showExpr(a)} ${Token.BinOp.show(op)} ${showExpr(b)})`
+    | UnaryOpExpr(op, expr) => `${UnaryOp.show(op)}${showExpr(expr)}`
+    | BinOpExpr(a, op, b) => `(${showExpr(a)} ${BinOp.show(op)} ${showExpr(b)})`
     | ConstExpr(c) => c->Const.show
     | VarExpr(x) => x
-    | AssignmentExpr(x, val) => `${x} = ${showExpr(val)}`
+    | AssignmentExpr(lhs, rhs) => `${showExpr(lhs)} = ${showExpr(rhs)}`
     | LetInExpr(x, e1, e2) => `let ${x} = ${showExpr(e1)} in ${showExpr(e2)}`
     | FuncExpr(args, body) =>
       switch args {
@@ -81,7 +124,6 @@ module Ast = {
 module Expr = {
   type t = Ast.expr
   let show = Ast.showExpr
-  module Const = Ast.Const
 }
 
 module Decl = {

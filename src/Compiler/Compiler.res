@@ -232,28 +232,41 @@ let emitUnit = (self: t): unit => {
 
 let encodeConstExpr = c => {
   switch c {
-  | Ast.Expr.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
-  | Ast.Expr.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
-  | Ast.Expr.Const.UnitConst => Wasm.Inst.ConstI32(0)
+  | Ast.Const.U32Const(n) => Wasm.Inst.ConstI32(n)
+  | Ast.Const.BoolConst(b) => Wasm.Inst.ConstI32(b ? 1 : 0)
+  | Ast.Const.UnitConst => Wasm.Inst.ConstI32(0)
   }
 }
 
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(_, c) => self->emit(encodeConstExpr(c))
-  | CoreBinOpExpr(_, lhs, op, rhs) => {
+  | CoreUnaryOpExpr(_, op, expr) => {
+      open Ast.UnaryOp
+
       let opInst = switch op {
-      | Token.BinOp.Plus => Wasm.Inst.AddI32
-      | Token.BinOp.Sub => Wasm.Inst.SubI32
-      | Token.BinOp.Mult => Wasm.Inst.MulI32
-      | Token.BinOp.Div => Wasm.Inst.DivI32Unsigned
-      | Token.BinOp.EqEq => Wasm.Inst.EqI32
-      | Token.BinOp.Neq => Wasm.Inst.NeI32
-      | Token.BinOp.Lss => Wasm.Inst.LtI32Unsigned
-      | Token.BinOp.Leq => Wasm.Inst.LeI32Unsigned
-      | Token.BinOp.Gtr => Wasm.Inst.GtI32Unsigned
-      | Token.BinOp.Geq => Wasm.Inst.GeI32Unsigned
-      | Token.BinOp.Mod => Wasm.Inst.RemI32Unsigned
+      | Neg => raise(CompilerExn.Unimplemented("u32 negation is not handled"))
+      | Not => Wasm.Inst.EqzI32
+      | Deref => Wasm.Inst.LoadI32(expr->CoreAst.typeOfExpr->Types.sizeLog2, 0)
+      }
+
+      self->compileExpr(expr)
+      self->emit(opInst)
+    }
+  | CoreBinOpExpr(_, lhs, op, rhs) => {
+      open Ast.BinOp
+      let opInst = switch op {
+      | Plus => Wasm.Inst.AddI32
+      | Sub => Wasm.Inst.SubI32
+      | Mult => Wasm.Inst.MulI32
+      | Div => Wasm.Inst.DivI32Unsigned
+      | Equ => Wasm.Inst.EqI32
+      | Neq => Wasm.Inst.NeI32
+      | Lss => Wasm.Inst.LtI32Unsigned
+      | Leq => Wasm.Inst.LeI32Unsigned
+      | Gtr => Wasm.Inst.GtI32Unsigned
+      | Geq => Wasm.Inst.GeI32Unsigned
+      | Mod => Wasm.Inst.RemI32Unsigned
       }
 
       self->compileExpr(lhs)
@@ -292,21 +305,32 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     | Some(Global(index, _)) => self->emit(Wasm.Inst.GetGlobal(index))
     | None => raise(CompilerExn.VariableNotFound(x.contents.name))
     }
-  | CoreAssignmentExpr(x, rhs) =>
-    switch self->resolveVar(x.contents.newName) {
-    | Some(Local(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
-    | Some(Global(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
-    | Some(var) => {
-        let inst = switch var {
-        | Local(index, _) => Wasm.Inst.SetLocal(index)
-        | Global(index, _) => Wasm.Inst.SetGlobal(index)
-        }
+  | CoreAssignmentExpr(lhs, rhs) =>
+    switch lhs {
+    | CoreVarExpr(x) =>
+      switch self->resolveVar(x.contents.newName) {
+      | Some(Local(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+      | Some(Global(_, false)) => raise(CompilerExn.CannotReassignImmutableValue(x.contents.name))
+      | Some(var) => {
+          let inst = switch var {
+          | Local(index, _) => Wasm.Inst.SetLocal(index)
+          | Global(index, _) => Wasm.Inst.SetGlobal(index)
+          }
 
+          self->compileExpr(rhs)
+          self->emit(inst)
+          self->emitUnit
+        }
+      | None => raise(CompilerExn.VariableNotFound(x.contents.name))
+      }
+    | CoreUnaryOpExpr(_, Ast.UnaryOp.Deref, expr) => {
+        self->compileExpr(expr)
         self->compileExpr(rhs)
-        self->emit(inst)
+        self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Types.sizeLog2, 0))
         self->emitUnit
       }
-    | None => raise(CompilerExn.VariableNotFound(x.contents.name))
+    | _ =>
+      raise(CompilerExn.Unimplemented("[unreachable]: assignement to an invalid lhs expression"))
     }
   | CoreWhileExpr(cond, body) => {
       self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
@@ -327,7 +351,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           self->compileExpr(arg)
         })
 
-        let funcTy = lhs->CoreAst.tyVarOfExpr
+        let funcTy = lhs->CoreAst.typeOfExpr
         let funcSig = funcTy->funcSignatureOf
         let funcSigIndex = self.mod->Wasm.Module.addSignature(funcSig)
 
@@ -374,12 +398,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emit(Wasm.Inst.ConstI32(funcIndex))
     }
   | CoreTypeAssertion(expr, originalTy, assertedTy) => {
-      // Js.log(`${Types.showMonoTy(originalTy)} as ${Types.showMonoTy(assertedTy)}`)
+      open Types
 
       if originalTy == assertedTy {
         ()
       } else {
         switch (originalTy, assertedTy) {
+        | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
+        | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
         | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
         }
       }
@@ -410,7 +436,7 @@ and compileFuncDecl = (
   body,
 ): Wasm.Func.index => {
   let args = args->Array.map(x => (x.contents.name, x.contents.ty))
-  let func = Func.make(f.contents.newName, args, CoreExpr.tyVarOf(body))
+  let func = Func.make(f.contents.newName, args, CoreExpr.typeOf(body))
 
   let funcIdx = self.funcs->Js.Array2.push(func) - 1
   let _ = self.funcStack->MutableStack.push(func)

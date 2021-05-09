@@ -179,6 +179,10 @@ module BlockReturnType = {
     }
 }
 
+// https://github.com/sunfishcode/wasm-reference-manual/blob/master/WebAssembly.md#memflags-immediate-type
+type alignmentHint = int
+type addrOffset = int
+
 module Inst = {
   type t =
     | ConstI32(int)
@@ -199,6 +203,8 @@ module Inst = {
     | SetLocal(int)
     | Call(int)
     | CallIndirect(int, int)
+    | LoadI32(alignmentHint, addrOffset)
+    | StoreI32(alignmentHint, addrOffset)
     | Drop
     | AddI32
     | SubI32
@@ -264,6 +270,14 @@ module Inst = {
     | CallIndirect(typeIdx, tableIdx) => (
         0x11,
         `call_indirect [typeIndex=${Int.toString(typeIdx)}, tableIndex=${Int.toString(tableIdx)}]`,
+      )
+    | LoadI32(alignment, offset) => (
+        0x28,
+        `i32.load (alignment=${Int.toString(alignment)}, offset=${Int.toString(offset)})`,
+      )
+    | StoreI32(alignment, offset) => (
+        0x36,
+        `i32.store (alignment=${Int.toString(alignment)}, offset=${Int.toString(offset)})`,
       )
     | Drop => (0x1a, "drop")
     | AddI32 => (0x6a, "i32.add")
@@ -337,6 +351,10 @@ module Inst = {
     | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
     | CallIndirect(typeIdx, tableIdx) =>
       Array.concatMany([[inst->opcode], uleb128(typeIdx), uleb128(tableIdx)])
+    | LoadI32(alignment, offset) =>
+      Array.concatMany([[inst->opcode], uleb128(alignment), uleb128(offset)])
+    | StoreI32(alignment, offset) =>
+      Array.concatMany([[inst->opcode], uleb128(alignment), uleb128(offset)])
     | _ => [inst->opcode]
     }
 }

@@ -4,30 +4,39 @@ open Types
 open Subst
 open Unification
 
-let constTy = (c: Ast.Expr.Const.t): polyTy => {
+let constTy = (c: Ast.Const.t): polyTy => {
   let ty = switch c {
-  | Ast.Expr.Const.U32Const(_) => u32Ty
-  | Ast.Expr.Const.BoolConst(_) => boolTy
-  | Ast.Expr.Const.UnitConst => unitTy
+  | Ast.Const.U32Const(_) => u32Ty
+  | Ast.Const.BoolConst(_) => boolTy
+  | Ast.Const.UnitConst => unitTy
   }
 
   polyOf(ty)
 }
 
-let binOpTy = (op: Token.BinOp.t): polyTy => {
-  open Token.BinOp
+let binOpTy = (op: Ast.BinOp.t): polyTy => {
+  open Ast.BinOp
   switch op {
   | Plus => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Sub => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Mult => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Div => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   | Mod => polyOf(funTy([u32Ty, u32Ty], u32Ty))
-  | EqEq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // 'a -> 'a -> bool
-  | Neq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // 'a -> 'a -> bool
+  | Equ => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // a -> a -> bool
+  | Neq => ([0], funTy([TyVar(0), TyVar(0)], boolTy)) // a -> a -> bool
   | Lss => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Leq => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Gtr => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Geq => polyOf(funTy([u32Ty, u32Ty], boolTy))
+  }
+}
+
+let unaryOpTy = (op: Ast.UnaryOp.t): polyTy => {
+  open Ast.UnaryOp
+  switch op {
+  | Neg => polyOf(funTy([u32Ty], u32Ty))
+  | Not => polyOf(funTy([boolTy], boolTy))
+  | Deref => ([0], funTy([pointerTy(TyVar(0))], TyVar(0))) // Ptr<a> -> a
   }
 }
 
@@ -48,9 +57,7 @@ let rec rewriteExpr = expr => {
               tau,
               x,
               rewriteExpr(e),
-              aux(tl)->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Expr.Const.UnitConst), x =>
-                x
-              ),
+              aux(tl)->Option.mapWithDefault(CoreConstExpr(unitTy, Ast.Const.UnitConst), x => x),
             ),
           )
         | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl)))
@@ -84,7 +91,7 @@ let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: mono
   string,
 > => {
   collectCoreExprTypeSubsts(env, expr)->Result.flatMap(sig => {
-    unify(substMono(sig, tau), substMono(sig, CoreExpr.tyVarOf(expr)))->Result.map(sig2 =>
+    unify(substMono(sig, tau), substMono(sig, CoreExpr.typeOf(expr)))->Result.map(sig2 =>
       substCompose(sig2, sig)
     )
   })
@@ -103,22 +110,32 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     | Some(ty) => unify(x.ty, Context.freshInstance(ty))
     | None => Error(`unbound variable: "${x.name}"`)
     }
-  | CoreAssignmentExpr(x, val) =>
-    switch env->Env.get(x.contents.name) {
-    | Some(ty) =>
-      collectCoreExprTypeSubstsWith(env, val, Context.freshInstance(ty))->flatMap(sig1 =>
-        unify(substMono(sig1, CoreExpr.tyVarOf(expr)), unitTy)->map(sig2 =>
-          substCompose(sig2, sig1)
-        )
-      )
-    | None => Error(`unbound variable: "${x.contents.name}"`)
+  | CoreAssignmentExpr(lhs, rhs) => {
+      let tau1 = lhs->CoreAst.typeOfExpr
+      let tau2 = rhs->CoreAst.typeOfExpr
+      collectCoreExprTypeSubsts(env, rhs)->flatMap(sig1 => {
+        let sig1Gamma = substEnv(sig1, env)
+        let sig1Tau1 = substMono(sig1, tau1)
+        collectCoreExprTypeSubstsWith(sig1Gamma, lhs, sig1Tau1)->flatMap(sig2 => {
+          let sig21 = substCompose(sig2, sig1)
+          let sig21Tau1 = substMono(sig2, sig1Tau1)
+          let sig21Tau2 = substMono(sig21, tau2)
+          unify(sig21Tau1, sig21Tau2)->map(sig3 => substCompose(sig3, sig21))
+        })
+      })
     }
+  | CoreUnaryOpExpr(tau, op, expr) =>
+    collectCoreExprTypeSubsts(env, expr)->flatMap(sig => {
+      let opTy = substMono(sig, funTy([CoreExpr.typeOf(expr)], tau))
+      let tau' = Context.freshInstance(unaryOpTy(op))
+      unify(opTy, tau')->map(sig2 => substCompose(sig2, sig))
+    })
   | CoreBinOpExpr(tau, a, op, b) =>
     collectCoreExprTypeSubsts(env, a)->flatMap(sigA => {
       let sigAGamma = substEnv(sigA, env)
       collectCoreExprTypeSubsts(sigAGamma, b)->flatMap(sigB => {
         let sigBA = substCompose(sigB, sigA)
-        let opTy = substMono(sigBA, funTy([CoreExpr.tyVarOf(a), CoreExpr.tyVarOf(b)], tau))
+        let opTy = substMono(sigBA, funTy([CoreExpr.typeOf(a), CoreExpr.typeOf(b)], tau))
         let tau' = Context.freshInstance(binOpTy(op))
         unify(opTy, tau')->map(sig => substCompose(sig, sigBA))
       })
@@ -138,7 +155,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         switch lastExpr {
         | Some(expr) =>
           collectCoreExprTypeSubsts(substEnv(sig, env), expr)->Result.flatMap(sig2 => {
-            let retTy = CoreExpr.tyVarOf(expr)
+            let retTy = CoreExpr.typeOf(expr)
             let sig21 = substCompose(sig2, sig)
             unify(substMono(sig21, tau), substMono(sig21, retTy))->Result.map(sig3 =>
               substCompose(sig3, sig21)
@@ -150,7 +167,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     }
   | CoreLetInExpr(tau, x, e1, e2) => {
       let x = x.contents
-      let tau1 = CoreExpr.tyVarOf(e1)
+      let tau1 = CoreExpr.typeOf(e1)
       collectCoreExprTypeSubsts(env, e1)->flatMap(sig1 => {
         let sig1Gamma = substEnv(sig1, env)
         let sig1Tau1 = substMono(sig1, tau1)
@@ -180,7 +197,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     })
 
   | CoreFuncExpr(tau, name, args, body) => {
-      let tauRet = CoreExpr.tyVarOf(body)
+      let tauRet = CoreExpr.typeOf(body)
       funcRetTyStack->MutableStack.push(tauRet)
       let gammaArgs =
         args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
@@ -211,7 +228,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       })
     }
   | CoreAppExpr(tau, lhs, args) => {
-      let argsTy = args->Array.map(CoreExpr.tyVarOf)
+      let argsTy = args->Array.map(CoreExpr.typeOf)
       let fTy = funTy(argsTy, tau)
       collectCoreExprTypeSubstsWith(env, lhs, fTy)
       ->flatMap(sig1 => {
@@ -229,7 +246,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       ->map(((sig, _)) => sig)
     }
   | CoreWhileExpr(cond, body) => {
-      let tauBody = CoreExpr.tyVarOf(body)
+      let tauBody = CoreExpr.typeOf(body)
       collectCoreExprTypeSubsts(env, cond)->flatMap(sig1 => {
         let sig1TauBody = substMono(sig1, tauBody)
         let sig1Gamma = substEnv(sig1, env)
@@ -258,7 +275,7 @@ and collectCoreStmtTypeSubsts = (env: Env.t, stmt: CoreStmt.t): result<Subst.t, 
 let inferCoreExprType = expr => {
   let env = Map.String.empty
   collectCoreExprTypeSubsts(env, expr)->Result.map(subst => {
-    (substMono(subst, CoreExpr.tyVarOf(expr)), subst)
+    (substMono(subst, CoreExpr.typeOf(expr)), subst)
   })
 }
 

@@ -36,17 +36,17 @@ let keyword = anyOf([
 
 let symbol = anyOf([
   string("->")->map(_ => Symbol(RightArrow)),
-  string("==")->map(_ => BinaryOp(EqEq)),
-  string("!=")->map(_ => BinaryOp(Neq)),
-  char('+')->map(_ => BinaryOp(Plus)),
-  char('-')->map(_ => BinaryOp(Sub)),
-  char('*')->map(_ => BinaryOp(Mult)),
-  char('/')->map(_ => BinaryOp(Div)),
-  char('%')->map(_ => BinaryOp(Mod)),
-  string("<=")->map(_ => BinaryOp(Leq)),
-  string(">=")->map(_ => BinaryOp(Geq)),
-  char('<')->map(_ => BinaryOp(Lss)),
-  char('>')->map(_ => BinaryOp(Gtr)),
+  string("==")->map(_ => Symbol(EqEq)),
+  string("!=")->map(_ => Symbol(Neq)),
+  char('+')->map(_ => Symbol(Plus)),
+  char('-')->map(_ => Symbol(Minus)),
+  char('*')->map(_ => Symbol(Star)),
+  char('/')->map(_ => Symbol(Div)),
+  char('%')->map(_ => Symbol(Percent)),
+  string("<=")->map(_ => Symbol(Leq)),
+  string(">=")->map(_ => Symbol(Geq)),
+  char('<')->map(_ => Symbol(Lss)),
+  char('>')->map(_ => Symbol(Gtr)),
   char('(')->map(_ => Symbol(Lparen)),
   char(')')->map(_ => Symbol(Rparen)),
   char(',')->map(_ => Symbol(Comma)),
@@ -55,6 +55,7 @@ let symbol = anyOf([
   char('{')->map(_ => Symbol(Lbracket)),
   char('}')->map(_ => Symbol(Rbracket)),
   char(':')->map(_ => Symbol(Colon)),
+  char('!')->map(_ => Symbol(Bang)),
 ])
 
 let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])
