@@ -98,3 +98,10 @@ let anyOf = (ls: array<lexer<'a>>): lexer<'a> => {
 let string = str => {
   seq(str->Js.String.castToArrayLike->Js.Array.fromMap(c => char(c->String.get(0))))->map(_ => str)
 }
+
+let different = (l: lexer<'a>): lexer<()> => {
+  input => switch l(input) {
+    | Some(_) => None
+    | None => Some(((), input->Slice.tail))
+  }
+}

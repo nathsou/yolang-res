@@ -1,0 +1,45 @@
+
+mut STACK_TOP = 65535;
+
+// struct MinMax {
+//   min: u32,
+//   max: u32,
+// }
+
+let MINMAX_STRUCT_SIZE = 8;
+
+fn setMin(s, min) unsafe {
+  *s = min;
+}
+
+fn setMax(s, min) unsafe {
+  *(((s as u32) + 4) as Ptr<u32>) = min;
+}
+
+fn getMin(s) unsafe {
+  *s
+}
+
+fn getMax(s) unsafe {
+  *(((s as u32) + 4) as Ptr<u32>)
+}
+
+fn createMinMaxStruct(min, max) unsafe {
+  STACK_TOP = STACK_TOP - MINMAX_STRUCT_SIZE;
+  let addr = STACK_TOP as Ptr<u32>;
+  setMin(addr, min);
+  setMax(addr, max);
+  addr
+}
+
+fn freeMinMaxStruct(s) {
+  STACK_TOP = (s as u32) + MINMAX_STRUCT_SIZE;
+}
+
+fn main() {
+  let minmax = createMinMaxStruct(1791, 1998);
+  let sum = getMax(minmax) + getMin(minmax);
+  freeMinMaxStruct(minmax);
+  
+  sum
+}

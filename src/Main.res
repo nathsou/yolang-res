@@ -34,9 +34,9 @@ let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
   `)
 
   let _ = instanciate(bytes)->Js.Promise.then_(mainFn => {
-    let start = Js.Date.now()
+    // let start = Js.Date.now()
     Js.log(mainFn())
-    Js.log(`took ${Float.toString(Js.Date.now() -. start)} ms`)
+    // Js.log(`took ${Float.toString(Js.Date.now() -. start)} ms`)
     Js.Promise.resolve()
   }, _)
 }
@@ -64,13 +64,15 @@ let run = (input, output, opt): unit => {
           | Error(err) => Js.Console.error(err)
           }
         }
-      | Error(err) =>
-        Js.Console.error(
-          `${prog
-            ->Array.map(Core.CoreDecl.from)
-            ->Array.map(Inferencer.rewriteDecl)
-            ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(Subst.empty)))}\n\n${err}`,
-        )
+      | Error(err) => {
+          // Js.Console.error(
+          //   `${prog
+          //     ->Array.map(Core.CoreDecl.from)
+          //     ->Array.map(Inferencer.rewriteDecl)
+          //     ->Array.joinWith("\n\n", Core.CoreDecl.show(~subst=Some(Subst.empty)))}\n\n${err}`,
+          // )
+          Js.Console.error(err)
+        }
       }
     }
   | Error(err) => Js.Console.error(err)

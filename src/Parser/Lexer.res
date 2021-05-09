@@ -22,7 +22,7 @@ let uppercaseIdentifier =
     chars->Array.joinWith("", c => String.make(1, c)),
   ))
 
-let keyword = anyOf([
+let keyword = then(anyOf([
   string("let")->map(_ => Keyword(Keywords.Let)),
   string("mut")->map(_ => Keyword(Keywords.Mut)),
   string("in")->map(_ => Keyword(Keywords.In)),
@@ -33,7 +33,7 @@ let keyword = anyOf([
   string("return")->map(_ => Keyword(Keywords.Return)),
   string("as")->map(_ => Keyword(Keywords.As)),
   string("unsafe")->map(_ => Keyword(Keywords.Unsafe)),
-])
+]), different(alphaNum))->map(((kw, _)) => kw)
 
 let symbol = anyOf([
   string("->")->map(_ => Symbol(RightArrow)),
