@@ -60,8 +60,6 @@ let compile = (input: string, opt: bool) => {
       let core = coreProg->Array.map(Core.CoreDecl.subst(subst))
 
       Compiler.compile(core)->Result.map(mod => {
-        // Js.log(mod->Wasm.Module.show ++ "\n\n")
-
         let bytes = mod->Wasm.Module.encodeAsUint8Array
         let bytes = opt ? bytes->optimize : bytes
 
