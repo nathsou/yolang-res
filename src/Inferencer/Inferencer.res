@@ -263,6 +263,18 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     | None => Error("'return' used outside of a function")
     }
   | CoreTypeAssertion(expr, originalTy, _) => collectCoreExprTypeSubstsWith(env, expr, originalTy)
+  | CoreTupleExpr(exprs) =>
+    let res = exprs->Array.reduce(Ok((Subst.empty, env)), (prev, exprN) => {
+      prev->flatMap(((sigN, gammaN)) => {
+        collectCoreExprTypeSubsts(gammaN, exprN)->flatMap(sig => {
+          let nextSig = substCompose(sig, sigN)
+          let nextGamma = substEnv(sig, gammaN)
+          Ok((nextSig, nextGamma))
+        })
+      })
+    })
+
+    res->map(((sig, _)) => sig)
   }
 }
 

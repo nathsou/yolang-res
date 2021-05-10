@@ -1,0 +1,9 @@
+
+fn makeTriplet(a, b, c) {
+  (a, b, c)
+} 
+
+fn main() {
+  (1, 2, 3, 4, 5, 6, 7);
+  makeTriplet(4, 5, 6)
+}

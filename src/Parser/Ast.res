@@ -69,6 +69,7 @@ module Ast = {
     | WhileExpr(expr, expr)
     | ReturnExpr(expr)
     | TypeAssertion(expr, Types.monoTy)
+    | TupleExpr(array<expr>)
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
   and decl = FuncDecl(string, array<string>, expr) | GlobalDecl(string, bool, expr)
 
@@ -104,6 +105,7 @@ module Ast = {
     | WhileExpr(cond, body) => `while ${showExpr(cond)} ${showExpr(body)}`
     | ReturnExpr(ret) => `return ${showExpr(ret)}`
     | TypeAssertion(e, ty) => `${showExpr(e)} as ${Types.showMonoTy(ty)}`
+    | TupleExpr(exprs) => `(${exprs->Array.joinWith(", ", showExpr)})`
     }
 
   and showDecl = decl =>

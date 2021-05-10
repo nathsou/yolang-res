@@ -10,6 +10,16 @@ let optimize: Js.Typed_array.Uint8Array.t => Js.Typed_array.Uint8Array.t = %raw(
     }
   `)
 
+let readModule = (path): Js.Typed_array.Uint8Array.t => {
+  let readBytesSync: string => Js.Typed_array.Uint8Array.t = %raw(`
+    function(path) {
+      return Uint8Array.from(require('fs').readFileSync(path));
+    }
+  `)
+
+  readBytesSync(path)
+}
+
 let writeModule = (bytes: Js.Typed_array.Uint8Array.t, outFile): unit => {
   let writeBytesSync: (string, Js.Typed_array.Uint8Array.t) => unit = %raw(`
     function(path, bytes) {
@@ -81,6 +91,7 @@ let run = (input, output, opt): unit => {
 }
 
 switch Node.Process.argv {
+| [_, _, "exec", path] => runModule(readModule(path))
 | [_, _, path, "-O2"] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, None, true)

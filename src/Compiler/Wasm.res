@@ -157,23 +157,19 @@ module ValueType = {
 }
 
 module BlockReturnType = {
-  type t = I32 | I64 | F32 | F64 | Void
+  type t = TypeValue(ValueType.t) | TypeIndex(int, (array<ValueType.t>, array<ValueType.t>)) | Void
 
-  let encode = (v: t): byte =>
+  let encode = (v: t): array<byte> =>
     switch v {
-    | I32 => 0x7f
-    | I64 => 0x7e
-    | F32 => 0x7d
-    | F64 => 0x7c
-    | Void => 0x40
+    | TypeValue(t) => [t->ValueType.encode]
+    | TypeIndex(idx, _) => uleb128(idx)
+    | Void => [0x40]
     }
 
   let show = v =>
     switch v {
-    | I32 => "i32"
-    | I64 => "i64"
-    | F32 => "f32"
-    | F64 => "f64"
+    | TypeValue(t) => t->ValueType.show
+    | TypeIndex(idx, _) => `type ${Int.toString(idx)}`
     | Void => "void"
     }
 }
@@ -373,7 +369,7 @@ module Inst = {
     | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
     | GetLocal(n) | SetLocal(n) | TeeLocal(n) | GetGlobal(n) | SetGlobal(n) =>
       Array.concat([inst->opcode], uleb128(n))
-    | If(bt) | Block(bt) | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
+    | If(bt) | Block(bt) | Loop(bt) => Array.concat([inst->opcode], bt->BlockReturnType.encode)
     | BranchIf(depth) | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
     | CallIndirect(typeIdx, tableIdx) =>
@@ -392,11 +388,11 @@ module Func = {
     // http://webassembly.github.io/spec/core/binary/types.html#function-types
     let funcTypeCode = 0x60
 
-    let make = (params, ret) => {
-      FuncSig(params, ret->Option.mapWithDefault([], r => [r]))
+    let make = (params, rets) => {
+      FuncSig(params, rets)
     }
 
-    let empty = make([], None)
+    let empty = make([], [])
 
     let encode = (FuncSig(params, ret)): Vec.t => {
       Array.concatMany([
@@ -414,7 +410,7 @@ module Func = {
       | ([_], [_]) => `${argsFmt} -> ${retsFmt}`
       | ([_], []) => `${argsFmt} -> ()`
       | (_, []) => `(${argsFmt}) -> ()`
-      | _ => `(${argsFmt}) -> ${retsFmt}`
+      | _ => `(${argsFmt}) -> (${retsFmt})`
       }
     }
   }
@@ -498,7 +494,7 @@ module TypeSection = {
 
   let make = (): t => []
 
-  let add = (self: t, signature: Func.Signature.t): Func.Signature.index => {
+  let getOrAdd = (self: t, signature: Func.Signature.t): Func.Signature.index => {
     switch self->Array.getIndexBy(sig => sig == signature) {
     | Some(idx) => idx
     | None => {
@@ -853,12 +849,12 @@ module Module = {
     importsCount: 0,
   }
 
-  let addSignature = (self: t, sig: Func.Signature.t): Func.Signature.index => {
-    self.typeSection->TypeSection.add(sig)
+  let getOrAddSignature = (self: t, sig: Func.Signature.t): Func.Signature.index => {
+    self.typeSection->TypeSection.getOrAdd(sig)
   }
 
   let addFunc = (self: t, name, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
-    let sigIndex = self->addSignature(sig)
+    let sigIndex = self->getOrAddSignature(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
     let _ = self.funcs->Js.Array2.push(Func.make(name, sig, body))
     self.codeSection->CodeSection.addFunc(body) + self.importsCount

@@ -26,6 +26,7 @@ module CompilerExn = {
     | InvalidTypeAssertion(a, b) =>
       `invalid type assertion from ${Types.showMonoTy(a)} to ${Types.showMonoTy(b)}`
     | DerefUsedOutsideOfUnsafeBlock => `the deref operator can only be used in an unsafe block`
+    | Types.UnkownTypeSize(ty) => `unknown type size: ${Types.showMonoTy(ty)}`
     | _ => "unexpected compiler exception"
     }
 }
@@ -46,42 +47,51 @@ module Local = {
   }
 }
 
-let wasmValueTypeOf = (tau: Types.monoTy): option<Wasm.ValueType.t> => {
+let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   open Types
   open Wasm.ValueType
   switch tau {
-  | TyConst("u32", []) => Some(I32)
-  | TyConst("u64", []) => Some(I64)
-  | TyConst("bool", []) => Some(I32)
-  | TyConst("()", []) => None
-  | TyConst("Fun", _) => Some(I32)
-  | TyConst("Ptr", _) => Some(I32)
+  | TyConst("u32", []) => [I32]
+  | TyConst("u64", []) => [I64]
+  | TyConst("bool", []) => [I32]
+  | TyConst("()", []) => []
+  | TyConst("Fun", _) => [I32]
+  | TyConst("Ptr", _) => [I32]
+  | TyConst("Tuple", tys) => tys->Array.map(wasmValueTypeOf)->Array.concatMany
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
 
-let wasmBlockReturnTypeOf = (tau: Types.monoTy): Wasm.BlockReturnType.t => {
+let wasmBlockReturnTypeOf = (mod: Wasm.Module.t, tau: Types.monoTy): Wasm.BlockReturnType.t => {
   open Types
   open Wasm.BlockReturnType
   switch tau {
-  | TyConst("u32", []) => I32
-  | TyConst("u64", []) => I64
-  | TyConst("bool", []) => I32
-  | TyConst("()", []) => Void
-  | TyConst("Fun", _) => I32
-  | TyConst("Ptr", _) => I32
-  | _ => raise(CompilerExn.InvalidTypeConversion(tau))
+  | TyConst("Tuple", tys) => {
+      let rets = tys->Array.map(wasmValueTypeOf)->Array.concatMany
+      let signature = Wasm.Func.Signature.FuncSig([], rets)
+      let idx = mod->Wasm.Module.getOrAddSignature(signature)
+      TypeIndex(idx, ([], rets))
+    }
+  | _ =>
+    switch tau->wasmValueTypeOf {
+    | [] => Void
+    | [ty] => TypeValue(ty)
+    | _ => raise(CompilerExn.Unimplemented(`wasmBlockReturnTypeOf for ${Types.showMonoTy(tau)}`))
+    }
   }
 }
 
 let funcSignatureOf = ty =>
   switch ty {
   | Types.TyConst("Fun", tys) => {
-      let args =
-        tys->Js.Array2.slice(~start=0, ~end_=tys->Array.length - 1)->Array.map(wasmValueTypeOf)
-      let ret = tys->Array.get(tys->Array.length - 2)->Option.flatMap(wasmValueTypeOf)
+      let params = tys->Js.Array2.slice(~start=0, ~end_=tys->Array.length - 1)
 
-      Wasm.Func.Signature.make(args->Array.keepMap(x => x), ret)
+      let ret = tys->Array.get(tys->Array.length - 1)
+
+      Wasm.Func.Signature.make(
+        params->Array.map(wasmValueTypeOf)->Array.concatMany,
+        ret->Option.mapWithDefault([], wasmValueTypeOf),
+      )
     }
   | _ => raise(CompilerExn.InvalidFunctionSignature(ty))
   }
@@ -99,7 +109,7 @@ module Func = {
     let self: t = {
       name: name,
       locals: [],
-      params: params->Array.keep(((_, xTy)) => !(xTy->Types.isZeroSizeType)),
+      params: params->Array.keep(((_, xTy)) => !(xTy->Types.isZeroSizedType)),
       ret: ret,
       instructions: [],
     }
@@ -135,14 +145,14 @@ module Func = {
   }
 
   let toWasmFunc = (self: t): Wasm.Func.t => {
-    let sig = Wasm.Func.Signature.make(
-      self.params->Array.keepMap(((_, xTy)) => xTy->wasmValueTypeOf),
-      self.ret->wasmValueTypeOf,
-    )
+    let sig = funcSignatureOf(Types.funTy(self.params->Array.map(((_, xTy)) => xTy), self.ret))
 
     let locals = Wasm.Func.Local.fromTypes(
-      self.locals->Array.keepMap(l => wasmValueTypeOf(l.ty)->Option.map(ty => (l.name, ty))),
+      self.locals
+      ->Array.map(l => wasmValueTypeOf(l.ty)->Array.map(ty => (l.name, ty)))
+      ->Array.concatMany,
     )
+
     let body = Wasm.Func.Body.make(locals, self.instructions->Optimizer.peephole)
 
     Wasm.Func.make(self.name, sig, body)
@@ -161,7 +171,7 @@ module Global = {
   let make = (name, isMutable, ty, index, init): t => {
     name: name,
     isMutable: isMutable,
-    ty: ty->wasmValueTypeOf,
+    ty: ty,
     index: index,
     init: init,
   }
@@ -280,7 +290,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   | CoreBinOpExpr(_, lhs, op, rhs) => {
       open Ast.BinOp
 
-      if lhs->CoreAst.typeOfExpr->Types.isZeroSizeType {
+      if lhs->CoreAst.typeOfExpr->Types.isZeroSizedType {
         // () == () is always true
         // () != () is always false
         // this holds for any zero-sized type
@@ -317,7 +327,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->endScope
     }
   | CoreIfExpr(tau, cond, thenExpr, elseExpr) => {
-      let retTy = tau->wasmBlockReturnTypeOf
+      let retTy = self.mod->wasmBlockReturnTypeOf(tau)
       self->compileExpr(cond)
       self->emit(Wasm.Inst.If(retTy))
       self->compileExpr(thenExpr)
@@ -331,14 +341,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreLetInExpr(_, x, valExpr, inExpr) => {
       let x = x.contents
-      if !(valExpr->CoreAst.typeOfExpr->Types.isZeroSizeType) {
+      if !(valExpr->CoreAst.typeOfExpr->Types.isZeroSizedType) {
         self->compileExpr(valExpr)
         self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       }
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
-    if x.contents.ty->Types.isZeroSizeType {
+    if x.contents.ty->Types.isZeroSizedType {
       // accessing a zero sized type is a no-op
       ()
     } else {
@@ -349,7 +359,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     }
   | CoreAssignmentExpr(lhs, rhs) =>
-    if rhs->CoreAst.typeOfExpr->Types.isZeroSizeType {
+    if rhs->CoreAst.typeOfExpr->Types.isZeroSizedType {
       self->compileExpr(rhs)
     } else {
       switch lhs {
@@ -398,7 +408,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
         let funcTy = lhs->CoreAst.typeOfExpr
         let funcSig = funcTy->funcSignatureOf
-        let funcSigIndex = self.mod->Wasm.Module.addSignature(funcSig)
+        let funcSigIndex = self.mod->Wasm.Module.getOrAddSignature(funcSig)
 
         self->compileExpr(lhs)
         self->emit(Wasm.Inst.CallIndirect(funcSigIndex, 0))
@@ -454,6 +464,10 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->compileExpr(expr)
     }
+  | CoreTupleExpr(exprs) =>
+    exprs->Array.forEach(expr => {
+      self->compileExpr(expr)
+    })
   }
 }
 
@@ -462,16 +476,18 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
   | CoreExprStmt(expr) => {
       self->compileExpr(expr)
 
-      // drop the return value on the stack if it is not ()
-      switch expr->CoreExpr.typeOf->wasmValueTypeOf {
-      | Some(_) => self->emit(Wasm.Inst.Drop)
-      | None => ()
-      }
+      // drop the return values on the stack
+      expr
+      ->CoreExpr.typeOf
+      ->wasmValueTypeOf
+      ->Array.forEach(_ => {
+        self->emit(Wasm.Inst.Drop)
+      })
     }
   | CoreLetStmt(x, isMutable, rhs) =>
     self->compileExpr(rhs)
 
-    if !(rhs->CoreAst.typeOfExpr->Types.isZeroSizeType) {
+    if !(rhs->CoreAst.typeOfExpr->Types.isZeroSizedType) {
       self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }
@@ -512,7 +528,7 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
       | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
       }
 
-      let _ = self->declareGlobal(x.contents.name, mut, x.contents.ty, init)
+      let _ = self->declareGlobal(x.contents.name, mut, Some(Wasm.ValueType.I32), init)
     }
   }
 }

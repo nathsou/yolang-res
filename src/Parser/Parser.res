@@ -95,7 +95,19 @@ let var = alt(ident, globalName)->map(x => Ast.VarExpr(x))
 
 let unit = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Ast.ConstExpr(UnitConst))
 
-let primary = anyOf([int, bool, unit, var, parens(expr)])
+let tuple = parens(
+  seq4(
+    expr,
+    token(Symbol(Symbol.Comma)),
+    expr,
+    optional(then(token(Symbol(Symbol.Comma)), commas(expr))),
+  ),
+)->map(((e1, _, e2, es)) => {
+  let exprs = Array.concat([e1, e2], es->Option.mapWithDefault([], ((_, es)) => es))
+  Ast.TupleExpr(exprs)
+})
+
+let primary = anyOf([int, bool, unit, var, tuple, parens(expr)])
 
 let app = alt(
   then(primary, some(parens(commas(expr))))->map(((f, args)) =>

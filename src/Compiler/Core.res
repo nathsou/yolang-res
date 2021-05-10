@@ -17,6 +17,7 @@ module CoreAst = {
     | CoreWhileExpr(expr, expr)
     | CoreReturnExpr(expr)
     | CoreTypeAssertion(expr, Types.monoTy, Types.monoTy)
+    | CoreTupleExpr(array<expr>)
   and decl =
     | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
@@ -42,6 +43,7 @@ module CoreAst = {
     | CoreWhileExpr(_, _) => unitTy
     | CoreReturnExpr(expr) => typeOfExpr(expr)
     | CoreTypeAssertion(_, _, assertedTy) => assertedTy
+    | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
     }
   }
 
@@ -91,6 +93,7 @@ module CoreAst = {
     | CoreReturnExpr(expr) => "return " ++ withType(typeOfExpr(expr), showExpr(expr))
     | CoreTypeAssertion(expr, _, assertedTy) =>
       `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
+    | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", showExpr(~subst)) ++ ")"
     }
   }
 
@@ -182,6 +185,7 @@ module CoreAst = {
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
     | TypeAssertion(expr, assertedTy) => CoreTypeAssertion(fromExpr(expr), tau(), assertedTy)
+    | TupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(fromExpr))
     }
   }
 
@@ -235,6 +239,7 @@ module CoreAst = {
     | CoreReturnExpr(expr) => CoreReturnExpr(go(expr))
     | CoreTypeAssertion(expr, originalTy, assertedTy) =>
       CoreTypeAssertion(go(expr), subst(originalTy), subst(assertedTy))
+    | CoreTupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(go))
     }
   }
 
