@@ -117,12 +117,12 @@ module Func = {
     ty: Types.monoTy,
     scopeDepth: int,
     ~isMutable: bool,
-  ): Wasm.Func.Locals.index => {
+  ): Wasm.Func.Local.index => {
     let _ = self.locals->Js.Array2.push(Local.make(name, scopeDepth, ty, ~isMutable))
     self.params->Array.length + self.locals->Array.length - 1
   }
 
-  let findLocal = (self: t, name: string): option<(Wasm.Func.Locals.index, bool)> => {
+  let findLocal = (self: t, name: string): option<(Wasm.Func.Local.index, bool)> => {
     switch self.params->Array.getIndexBy(((x, _)) => x == name) {
     | Some(idx) => Some((idx, true))
     | None =>
@@ -140,10 +140,12 @@ module Func = {
       self.ret->wasmValueTypeOf,
     )
 
-    let locals = Wasm.Func.Locals.fromTypes(self.locals->Array.keepMap(l => wasmValueTypeOf(l.ty)))
+    let locals = Wasm.Func.Local.fromTypes(
+      self.locals->Array.keepMap(l => wasmValueTypeOf(l.ty)->Option.map(ty => (l.name, ty))),
+    )
     let body = Wasm.Func.Body.make(locals, self.instructions->Optimizer.peephole)
 
-    Wasm.Func.make(sig, body)
+    Wasm.Func.make(self.name, sig, body)
   }
 }
 
@@ -216,7 +218,7 @@ let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool
   self->emit(Wasm.Inst.SetLocal(localIndex))
 }
 
-type varInfo = Local(Wasm.Func.Locals.index, bool) | Global(Wasm.Global.index, bool)
+type varInfo = Local(Wasm.Func.Local.index, bool) | Global(Wasm.Global.index, bool)
 
 let declareGlobal = (self: t, name, isMutable: bool, ty, init): Wasm.Global.index => {
   let index = self.globals->HashMap.String.size
@@ -544,7 +546,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
 
     // compile function
     self.funcs->Array.forEach(f => {
-      let (sig, body) = f->Func.toWasmFunc
+      let (_, sig, body) = f->Func.toWasmFunc
       let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)
     })
 

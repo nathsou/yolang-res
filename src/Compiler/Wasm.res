@@ -120,21 +120,20 @@ module Section = {
   let encode = (section, bytes): Vec.t => Array.concat([section->id], Vec.encode(bytes))
 
   let show = sec =>
-    "[" ++
-    switch sec {
-    | Custom => "custom"
-    | Type => "type"
-    | Import => "import"
-    | Function => "function"
-    | Table => "table"
-    | Memory => "memory"
-    | Global => "global"
-    | Export => "export"
-    | Start => "start"
-    | Element => "element"
-    | Code => "code"
-    | Data => "data"
-    } ++ " section]"
+    `\x1b[33m[${switch sec {
+      | Custom => "custom"
+      | Type => "type"
+      | Import => "import"
+      | Function => "function"
+      | Table => "table"
+      | Memory => "memory"
+      | Global => "global"
+      | Export => "export"
+      | Start => "start"
+      | Element => "element"
+      | Code => "code"
+      | Data => "data"
+      }}]\x1b[0m`
 }
 
 module ValueType = {
@@ -330,9 +329,35 @@ module Inst = {
     opcode
   }
 
-  let show = inst => {
+  let identationDelta = inst =>
+    switch inst {
+    | If(_) => 1
+    | Block(_) => 1
+    | Loop(_) => 1
+    | End => -1
+    | _ => 0
+    }
+
+  let show = (
+    ~identation=ref(0),
+    inst,
+    funcNames: array<string>,
+    localNames: array<string>,
+  ): string => {
     let (_, fmt) = inst->info
-    fmt
+    let delta = inst->identationDelta
+    let ident =
+      Array.range(0, identation.contents + (delta < 0 ? delta : 0))->Array.joinWith("  ", _ => "")
+    identation := identation.contents + delta
+
+    let details = switch inst {
+    | Call(funcIndex) => `<${funcNames->Array.get(funcIndex)->Option.mapWithDefault("??", x => x)}>`
+    | GetLocal(localIndex) =>
+      `<${localNames->Array.get(localIndex)->Option.mapWithDefault("??", x => x)}>`
+    | _ => ""
+    }
+
+    ident ++ fmt ++ " " ++ details
   }
 
   let encode = inst =>
@@ -397,62 +422,77 @@ module Func = {
     }
   }
 
-  module Locals = {
-    type t = (int, ValueType.t)
+  module Local = {
+    type t = (array<string>, ValueType.t)
 
     type index = int
 
     // run-length sequence of types
-    let fromTypes = (types: array<ValueType.t>): array<t> => {
+    let fromTypes = (locals: array<(string, ValueType.t)>): array<t> => {
       let rec aux = (types, acc) => {
         switch (types, acc) {
-        | (list{t1, ...types}, list{}) => aux(types, list{(1, t1)})
-        | (list{t1, ...types}, list{(count, t2), ...acc}) =>
+        | (list{(x, t1), ...types}, list{}) => aux(types, list{(list{x}, t1)})
+        | (list{(x, t1), ...types}, list{(lcls, t2), ...acc}) =>
           if t1 == t2 {
-            aux(types, list{(count + 1, t2), ...acc})
+            aux(types, list{(list{x, ...lcls}, t2), ...acc})
           } else {
-            aux(types, list{(1, t1), (count, t2), ...acc})
+            aux(types, list{(list{x}, t1), (lcls, t2), ...acc})
           }
         | _ => acc
         }
       }
 
-      aux(types->List.fromArray, list{})->List.reverse->List.toArray
+      let locals = aux(locals->List.fromArray, list{})->List.reverse
+      locals->List.map(((names, ty)) => (names->List.toArray->Array.reverse, ty))->List.toArray
     }
 
-    let encode = ((count, typ)): Vec.t => {
-      Array.concat(uleb128(count), [ValueType.encode(typ)])
+    let encode = ((names, typ): t): Vec.t => {
+      Array.concat(uleb128(names->Array.length), [ValueType.encode(typ)])
     }
 
-    let show = ((count, ty): t) => {
-      `local ${Int.toString(count)} ${ValueType.show(ty)}`
+    let show = ((names, ty): t) => {
+      `local [${names->Array.joinWith(", ", x => x)}] ${ValueType.show(ty)}`
     }
   }
 
   module Body = {
-    type t = (array<Locals.t>, array<Inst.t>)
+    type t = (array<Local.t>, array<Inst.t>)
 
     let make = (locals, instructions): t => (locals, instructions)
 
     let encode = ((locals, instructions): t): Vec.t => {
-      let locals = Vec.encodeMany(locals->Array.map(Locals.encode))
+      let locals = Vec.encodeMany(locals->Array.map(Local.encode))
       let instructions = Array.concatMany(instructions->Array.map(Inst.encode))
 
       Array.concatMany([[locals->Array.length + instructions->Array.length], locals, instructions])
     }
 
-    let show = ((locals, insts): t) => {
-      let locals = locals->Array.joinWith("\n", Locals.show)
-      let body = insts->Array.joinWith("\n", Inst.show)
+    let show = ((locals, insts): t, funcNames: array<string>, FuncSig(params, _): Signature.t) => {
+      let identation = ref(1)
 
-      locals ++ "\n" ++ body
+      let paramNames = params->Array.mapWithIndex((i, _) => `param[${Int.toString(i)}]`)
+      let localNames = Array.concat(
+        paramNames,
+        locals->Array.map(((names, _)) => names)->Array.concatMany,
+      )
+
+      let localsFmt = locals->Array.joinWith("\n", Local.show)
+
+      let body =
+        insts->Array.joinWith("\n", inst => Inst.show(inst, funcNames, localNames, ~identation))
+
+      if locals->Array.length == 0 {
+        body
+      } else {
+        localsFmt ++ "\n" ++ body
+      }
     }
   }
 
-  type t = (Signature.t, Body.t)
+  type t = (string, Signature.t, Body.t)
   type index = int
 
-  let make = (signature, body): t => (signature, body)
+  let make = (name, signature, body): t => (name, signature, body)
 }
 
 module TypeSection = {
@@ -499,8 +539,12 @@ module FuncSection = {
     Section.encode(Section.Function, Vec.encodeMany(self->Array.map(uleb128)))
   }
 
-  let show = (self: t) => {
-    Section.show(Section.Function) ++ ": " ++ self->Array.joinWith(", ", Int.toString)
+  let show = (self: t, funcNames: array<string>) => {
+    Section.show(Section.Function) ++
+    "\n" ++
+    self
+    ->Array.zip(funcNames)
+    ->Array.joinWith("\n", ((tyIdx, funcName)) => `${funcName}: ${tyIdx->Int.toString}`)
   }
 }
 
@@ -518,8 +562,16 @@ module CodeSection = {
     Section.encode(Section.Code, Vec.encodeMany(bodies->Array.map(Func.Body.encode)))
   }
 
-  let show = (self: t) => {
-    Section.show(Section.Code) ++ "\n" ++ self->Array.joinWith("\n\n", Func.Body.show)
+  let show = (self: t, funcs: array<Func.t>) => {
+    let funcNames = funcs->Array.map(((name, _, _)) => name)
+
+    Section.show(Section.Code) ++
+    "\n" ++
+    self
+    ->Array.zip(funcs)
+    ->Array.joinWith("\n\n", ((b, (name, sig, _))) => {
+      `\x1b[36m${name}\x1b[0m:\n` ++ b->Func.Body.show(funcNames, sig)
+    })
   }
 }
 
@@ -787,6 +839,7 @@ module Module = {
     exportSection: ExportSection.t,
     elementSection: ElementSection.t,
     codeSection: CodeSection.t,
+    funcs: array<Func.t>,
     importsCount: int,
   }
 
@@ -799,6 +852,7 @@ module Module = {
     exportSection: ExportSection.make(),
     elementSection: ElementSection.make(),
     codeSection: CodeSection.make(),
+    funcs: [],
     importsCount: 0,
   }
 
@@ -806,9 +860,10 @@ module Module = {
     self.typeSection->TypeSection.add(sig)
   }
 
-  let addFunc = (self: t, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
+  let addFunc = (self: t, name, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
     let sigIndex = self->addSignature(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
+    let _ = self.funcs->Js.Array2.push(Func.make(name, sig, body))
     self.codeSection->CodeSection.addFunc(body) + self.importsCount
   }
 
@@ -818,7 +873,7 @@ module Module = {
     sig: Func.Signature.t,
     body: Func.Body.t,
   ): Func.index => {
-    let funcIndex = self->addFunc(sig, body)
+    let funcIndex = self->addFunc(name, sig, body)
     self.exportSection->ExportSection.add(
       ExportEntry.make(name, ExportEntry.ExternalKind.Func, funcIndex),
     )
@@ -863,13 +918,13 @@ module Module = {
   let show = (self: t) => {
     [
       self.typeSection->TypeSection.show,
-      self.funcSection->FuncSection.show,
+      self.funcSection->FuncSection.show(self.funcs->Array.map(((name, _, _)) => name)),
       self.tableSection->TableSection.show,
       self.memorySection->MemorySection.show,
       self.globalSection->GlobalSection.show,
       self.exportSection->ExportSection.show,
       self.elementSection->ElementSection.show,
-      self.codeSection->CodeSection.show,
+      self.codeSection->CodeSection.show(self.funcs),
     ]->Array.joinWith("\n\n", x => x)
   }
 }
