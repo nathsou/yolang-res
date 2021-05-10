@@ -29,7 +29,5 @@ let substEnv = (s: t, env: Types.Env.t) => {
 }
 
 let show = (s: t) =>
-  "{\n" ++
-  s
-  ->Map.Int.toArray
-  ->Array.joinWith("\n", ((k, v)) => `  ${showTyVar(k)} -> ${showMonoTy(v)}`) ++ "\n}"
+  "{" ++
+  s->Map.Int.toArray->Array.joinWith(", ", ((k, v)) => `${showTyVar(k)} -> ${showMonoTy(v)}`) ++ "}"

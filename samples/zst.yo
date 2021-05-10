@@ -3,9 +3,13 @@ fn takeUnit(unit1, unit2, a, unit3, b) {
   let u1: () = unit1;
   let u2: () = unit2;
   let u3: () = unit3;
+  // FIXME: parsing never terminates
+  // let and = (a, b) -> if a { b } else { false };
   a * b
 }
 
 fn main() {
-  takeUnit((), (), 3, (), 7)
+  takeUnit((), (), 3, (), 7);
+  let yes = () == ();
+  yes
 }

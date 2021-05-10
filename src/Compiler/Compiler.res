@@ -279,23 +279,31 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreBinOpExpr(_, lhs, op, rhs) => {
       open Ast.BinOp
-      let opInst = switch op {
-      | Plus => Wasm.Inst.AddI32
-      | Sub => Wasm.Inst.SubI32
-      | Mult => Wasm.Inst.MulI32
-      | Div => Wasm.Inst.DivI32Unsigned
-      | Equ => Wasm.Inst.EqI32
-      | Neq => Wasm.Inst.NeI32
-      | Lss => Wasm.Inst.LtI32Unsigned
-      | Leq => Wasm.Inst.LeI32Unsigned
-      | Gtr => Wasm.Inst.GtI32Unsigned
-      | Geq => Wasm.Inst.GeI32Unsigned
-      | Mod => Wasm.Inst.RemI32Unsigned
-      }
 
-      self->compileExpr(lhs)
-      self->compileExpr(rhs)
-      self->emit(opInst)
+      if lhs->CoreAst.typeOfExpr->Types.isZeroSizeType {
+        // () == () is always true
+        // () != () is always false
+        // this holds for any zero-sized type
+        self->compileExpr(CoreConstExpr(Ast.Const.BoolConst(op == Equ)))
+      } else {
+        let opInst = switch op {
+        | Plus => Wasm.Inst.AddI32
+        | Sub => Wasm.Inst.SubI32
+        | Mult => Wasm.Inst.MulI32
+        | Div => Wasm.Inst.DivI32Unsigned
+        | Equ => Wasm.Inst.EqI32
+        | Neq => Wasm.Inst.NeI32
+        | Lss => Wasm.Inst.LtI32Unsigned
+        | Leq => Wasm.Inst.LeI32Unsigned
+        | Gtr => Wasm.Inst.GtI32Unsigned
+        | Geq => Wasm.Inst.GeI32Unsigned
+        | Mod => Wasm.Inst.RemI32Unsigned
+        }
+
+        self->compileExpr(lhs)
+        self->compileExpr(rhs)
+        self->emit(opInst)
+      }
     }
   | CoreBlockExpr(_, stmts, lastExpr, safety) => {
       self->beginScope(safety == Ast.Unsafe)

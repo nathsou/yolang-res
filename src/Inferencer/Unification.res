@@ -11,7 +11,15 @@ let bindVar = (x, ty, subst): result<Subst.t, string> => {
   if x->occurs(ty) {
     Error(`${Types.showMonoTy(TyVar(x))} occurs in ${Types.showMonoTy(ty)}`)
   } else {
-    Ok(subst->Map.Int.set(x, ty))
+    switch subst->Map.Int.get(x) {
+    | Some(t) =>
+      if t == ty {
+        Ok(subst)
+      } else {
+        Error(`${showMonoTy(ty)} is not unifiable with ${showMonoTy(t)}`)
+      }
+    | None => Ok(subst->Map.Int.set(x, ty))
+    }
   }
 }
 
