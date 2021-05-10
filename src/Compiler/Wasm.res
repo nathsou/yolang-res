@@ -352,7 +352,7 @@ module Inst = {
 
     let details = switch inst {
     | Call(funcIndex) => `<${funcNames->Array.get(funcIndex)->Option.mapWithDefault("??", x => x)}>`
-    | GetLocal(localIndex) =>
+    | GetLocal(localIndex) | SetLocal(localIndex) =>
       `<${localNames->Array.get(localIndex)->Option.mapWithDefault("??", x => x)}>`
     | _ => ""
     }
@@ -366,22 +366,14 @@ module Inst = {
     | ConstI64(n) => Array.concat([inst->opcode], sleb128(n))
     | ConstF32(x) => Array.concat([inst->opcode], F32.encode(x))
     | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
-    | GetLocal(n) => Array.concat([inst->opcode], uleb128(n))
-    | SetLocal(n) => Array.concat([inst->opcode], uleb128(n))
-    | TeeLocal(n) => Array.concat([inst->opcode], uleb128(n))
-    | GetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
-    | SetGlobal(n) => Array.concat([inst->opcode], uleb128(n))
-    | If(bt) => [inst->opcode, bt->BlockReturnType.encode]
-    | Block(bt) => [inst->opcode, bt->BlockReturnType.encode]
-    | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
-    | BranchIf(depth) => Array.concat([inst->opcode], uleb128(depth))
-    | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
+    | GetLocal(n) | SetLocal(n) | TeeLocal(n) | GetGlobal(n) | SetGlobal(n) =>
+      Array.concat([inst->opcode], uleb128(n))
+    | If(bt) | Block(bt) | Loop(bt) => [inst->opcode, bt->BlockReturnType.encode]
+    | BranchIf(depth) | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
     | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
     | CallIndirect(typeIdx, tableIdx) =>
       Array.concatMany([[inst->opcode], uleb128(typeIdx), uleb128(tableIdx)])
-    | LoadI32(alignment, offset) =>
-      Array.concatMany([[inst->opcode], uleb128(alignment), uleb128(offset)])
-    | StoreI32(alignment, offset) =>
+    | LoadI32(alignment, offset) | StoreI32(alignment, offset) =>
       Array.concatMany([[inst->opcode], uleb128(alignment), uleb128(offset)])
     | _ => [inst->opcode]
     }
