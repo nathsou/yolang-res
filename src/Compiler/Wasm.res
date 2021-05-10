@@ -334,12 +334,13 @@ module Inst = {
     | If(_) => 1
     | Block(_) => 1
     | Loop(_) => 1
+    | Else => -1
     | End => -1
     | _ => 0
     }
 
   let show = (
-    ~identation=ref(0),
+    ~indentation=ref(0),
     inst,
     funcNames: array<string>,
     localNames: array<string>,
@@ -347,12 +348,16 @@ module Inst = {
     let (_, fmt) = inst->info
     let delta = inst->identationDelta
     let ident =
-      Array.range(0, identation.contents + (delta < 0 ? delta : 0))->Array.joinWith("  ", _ => "")
-    identation := identation.contents + delta
+      Array.range(0, indentation.contents + (delta < 0 ? delta : 0))->Array.joinWith("  ", _ => "")
+    indentation := indentation.contents + delta
+
+    if inst == Else {
+      indentation := indentation.contents + 1
+    }
 
     let details = switch inst {
     | Call(funcIndex) => `<${funcNames->Array.get(funcIndex)->Option.mapWithDefault("??", x => x)}>`
-    | GetLocal(localIndex) | SetLocal(localIndex) =>
+    | GetLocal(localIndex) | SetLocal(localIndex) | TeeLocal(localIndex) =>
       `<${localNames->Array.get(localIndex)->Option.mapWithDefault("??", x => x)}>`
     | _ => ""
     }
@@ -460,7 +465,7 @@ module Func = {
     }
 
     let show = ((locals, insts): t, funcNames: array<string>, FuncSig(params, _): Signature.t) => {
-      let identation = ref(1)
+      let indentation = ref(1)
 
       let paramNames = params->Array.mapWithIndex((i, _) => `param[${Int.toString(i)}]`)
       let localNames = Array.concat(
@@ -471,7 +476,7 @@ module Func = {
       let localsFmt = locals->Array.joinWith("\n", Local.show)
 
       let body =
-        insts->Array.joinWith("\n", inst => Inst.show(inst, funcNames, localNames, ~identation))
+        insts->Array.joinWith("\n", inst => Inst.show(inst, funcNames, localNames, ~indentation))
 
       if locals->Array.length == 0 {
         body
