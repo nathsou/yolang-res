@@ -22,18 +22,23 @@ let uppercaseIdentifier =
     chars->Array.joinWith("", c => String.make(1, c)),
   ))
 
-let keyword = then(anyOf([
-  string("let")->map(_ => Keyword(Keywords.Let)),
-  string("mut")->map(_ => Keyword(Keywords.Mut)),
-  string("in")->map(_ => Keyword(Keywords.In)),
-  string("if")->map(_ => Keyword(Keywords.If)),
-  string("else")->map(_ => Keyword(Keywords.Else)),
-  string("fn")->map(_ => Keyword(Keywords.Fn)),
-  string("while")->map(_ => Keyword(Keywords.While)),
-  string("return")->map(_ => Keyword(Keywords.Return)),
-  string("as")->map(_ => Keyword(Keywords.As)),
-  string("unsafe")->map(_ => Keyword(Keywords.Unsafe)),
-]), different(alphaNum))->map(((kw, _)) => kw)
+let keyword =
+  then(
+    anyOf([
+      string("let")->map(_ => Keyword(Keywords.Let)),
+      string("mut")->map(_ => Keyword(Keywords.Mut)),
+      string("in")->map(_ => Keyword(Keywords.In)),
+      string("if")->map(_ => Keyword(Keywords.If)),
+      string("else")->map(_ => Keyword(Keywords.Else)),
+      string("fn")->map(_ => Keyword(Keywords.Fn)),
+      string("while")->map(_ => Keyword(Keywords.While)),
+      string("return")->map(_ => Keyword(Keywords.Return)),
+      string("as")->map(_ => Keyword(Keywords.As)),
+      string("unsafe")->map(_ => Keyword(Keywords.Unsafe)),
+      string("struct")->map(_ => Keyword(Keywords.Struct)),
+    ]),
+    different(alphaNum),
+  )->map(((kw, _)) => kw)
 
 let symbol = anyOf([
   string("->")->map(_ => Symbol(RightArrow)),

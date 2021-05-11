@@ -21,6 +21,7 @@ module CoreAst = {
   and decl =
     | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
+    | CoreStructDecl(Struct.t)
   and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
 
   let rec typeOfExpr = (expr: expr): monoTy => {
@@ -132,6 +133,7 @@ module CoreAst = {
         x.contents.ty,
         `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(init, ~subst)}`,
       )
+    | CoreStructDecl(s) => s->Struct.show
     }
   }
 
@@ -217,6 +219,7 @@ module CoreAst = {
       }
     | Ast.GlobalDecl(x, mut, init) =>
       CoreGlobalDecl(Context.freshIdentifier(x), mut, fromExpr(init))
+    | Ast.StructDecl(s) => CoreStructDecl(s)
     }
   }
 
@@ -254,6 +257,7 @@ module CoreAst = {
     switch decl {
     | CoreFuncDecl(f, args, body) => CoreFuncDecl(f, args, substExpr(s, body))
     | CoreGlobalDecl(x, mut, init) => CoreGlobalDecl(x, mut, substExpr(s, init))
+    | CoreStructDecl(_) => decl
     }
   }
 }

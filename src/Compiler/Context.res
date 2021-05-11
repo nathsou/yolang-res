@@ -10,12 +10,18 @@ type name = {
 type nameRef = ref<name>
 type renameMap = HashMap.Int.t<nameRef>
 
-type t = {mutable tyVarIndex: int, identifiers: array<string>, renaming: renameMap}
+type t = {
+  mutable tyVarIndex: int,
+  identifiers: array<string>,
+  renaming: renameMap,
+  structs: HashMap.String.t<Ast.Struct.t>,
+}
 
 let make = (): t => {
   tyVarIndex: 0,
   identifiers: [],
   renaming: HashMap.Int.make(~hintSize=10),
+  structs: HashMap.String.make(~hintSize=5),
 }
 
 // global context
@@ -69,4 +75,8 @@ let substIdentifiers = (s: Subst.t): unit => {
   ->Array.forEach(id => {
     id.contents.ty = s->Subst.substMono(id.contents.ty)
   })
+}
+
+let declareStruct = (s: Ast.Struct.t): unit => {
+  context.structs->HashMap.String.set(s.name, s)
 }

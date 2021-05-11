@@ -57,6 +57,7 @@ let primitiveType = alt(
     switch t {
     | Identifier("u32") => Some(Types.u32Ty)
     | Identifier("bool") => Some(Types.boolTy)
+    | UppercaseIdentifier(name) => Some(Types.TyConst(name, []))
     | _ => None
     }
   ),
@@ -281,6 +282,20 @@ let globalDecl =
     token(Symbol(SemiColon)),
   )->map(((letOrMut, x, _eq, e, _)) => Ast.GlobalDecl(x, letOrMut == Keyword(Keywords.Mut), e))
 
+let structDecl = alt(
+  seq5(
+    token(Keyword(Keywords.Struct)),
+    uppercaseIdent,
+    token(Symbol(Symbol.Lbracket)),
+    commas(seq3(ident, token(Symbol(Symbol.Colon)), type_)),
+    token(Symbol(Symbol.Rbracket)),
+  )->map(((_, name, _, entries, _)) => {
+    let entries = entries->Array.map(((attr, _, ty)) => (attr, ty))
+    Ast.StructDecl(Struct.make(name, entries))
+  }),
+  globalDecl,
+)
+
 let funDecl = alt(
   seq4(token(Keyword(Keywords.Fn)), ident, parens(commas(ident)), block)->map(((
     _,
@@ -288,7 +303,7 @@ let funDecl = alt(
     args,
     body,
   )) => Ast.FuncDecl(f, args, body)),
-  globalDecl,
+  structDecl,
 )
 
 decl := funDecl.contents

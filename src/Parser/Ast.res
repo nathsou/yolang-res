@@ -54,6 +54,19 @@ module Const = {
 
 type blockSafety = Safe | Unsafe
 
+module Struct = {
+  type t = {name: string, attributes: array<(string, Types.monoTy)>}
+
+  let make = (name, attributes): t => {name: name, attributes: attributes}
+
+  let show = ({name, attributes}: t) => {
+    "struct " ++
+    name ++
+    "{\n" ++
+    attributes->Array.joinWith(",\n", ((attr, ty)) => `  ${attr}: ${Types.showMonoTy(ty)}`) ++ "\n}"
+  }
+}
+
 module Ast = {
   type rec expr =
     | ConstExpr(Const.t)
@@ -70,8 +83,12 @@ module Ast = {
     | ReturnExpr(expr)
     | TypeAssertion(expr, Types.monoTy)
     | TupleExpr(array<expr>)
+  // | StructExpr()
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
-  and decl = FuncDecl(string, array<string>, expr) | GlobalDecl(string, bool, expr)
+  and decl =
+    | FuncDecl(string, array<string>, expr)
+    | GlobalDecl(string, bool, expr)
+    | StructDecl(Struct.t)
 
   let rec showExpr = expr =>
     switch expr {
@@ -112,6 +129,7 @@ module Ast = {
     switch decl {
     | FuncDecl(f, args, body) => `fn ${f}(${args->Array.joinWith(", ", x => x)}) ${showExpr(body)}`
     | GlobalDecl(x, mut, init) => `${mut ? "mut" : "let"} ${x} = ${showExpr(init)}`
+    | StructDecl(s) => s->Struct.show
     }
 
   and showStmt = stmt =>

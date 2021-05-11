@@ -530,6 +530,7 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
 
       let _ = self->declareGlobal(x.contents.name, mut, Some(Wasm.ValueType.I32), init)
     }
+  | CoreStructDecl(_) => () // struct declarations only affect types
   }
 }
 

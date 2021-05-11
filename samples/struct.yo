@@ -1,10 +1,10 @@
 
 mut STACK_TOP = 65535;
 
-// struct MinMax {
-//   min: u32,
-//   max: u32,
-// }
+struct MinMax {
+  min: u32,
+  max: u32,
+}
 
 let MINMAX_STRUCT_SIZE = 8;
 
