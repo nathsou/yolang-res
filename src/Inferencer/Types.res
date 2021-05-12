@@ -30,22 +30,6 @@ let tupleTy = tys => TyConst("Tuple", tys)
 
 let pointerTy = ty => TyConst("Ptr", [ty])
 
-exception UnkownTypeSize(monoTy)
-
-let rec sizeLog2 = (ty: monoTy) =>
-  switch ty {
-  | TyConst("u32", []) => 2
-  | TyConst("u64", []) => 3
-  | TyConst("bool", []) => 2
-  | TyConst("()", []) => 0 // Zero-sized Type
-  | TyConst("Fun", _) => 2
-  | TyConst("Ptr", _) => 2
-  | TyConst("Tuple", tys) => tys->Array.map(sizeLog2)->Array.reduce(0, (p, c) => p + c)
-  | _ => raise(UnkownTypeSize(ty))
-  }
-
-let isZeroSizedType = (ty: monoTy) => ty->sizeLog2 == 0
-
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int
   switch ty {

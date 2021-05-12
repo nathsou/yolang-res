@@ -264,18 +264,69 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     | None => Error("'return' used outside of a function")
     }
   | CoreTypeAssertion(expr, originalTy, _) => collectCoreExprTypeSubstsWith(env, expr, originalTy)
-  | CoreTupleExpr(exprs) =>
-    let res = exprs->Array.reduce(Ok((Subst.empty, env)), (prev, exprN) => {
-      prev->flatMap(((sigN, gammaN)) => {
-        collectCoreExprTypeSubsts(gammaN, exprN)->flatMap(sig => {
-          let nextSig = substCompose(sig, sigN)
-          let nextGamma = substEnv(sig, gammaN)
-          Ok((nextSig, nextGamma))
+  | CoreTupleExpr(exprs) => {
+      let res = exprs->Array.reduce(Ok((Subst.empty, env)), (prev, exprN) => {
+        prev->flatMap(((sigN, gammaN)) => {
+          collectCoreExprTypeSubsts(gammaN, exprN)->flatMap(sig => {
+            let nextSig = substCompose(sig, sigN)
+            let nextGamma = substEnv(sig, gammaN)
+            Ok((nextSig, nextGamma))
+          })
         })
       })
-    })
 
-    res->map(((sig, _)) => sig)
+      res->map(((sig, _)) => sig)
+    }
+  | CoreStructExpr(name, attrs) =>
+    switch Context.getStruct(name) {
+    | Some({attributes}) => {
+        let res = attributes->Array.reduce(Ok((env, Subst.empty)), (
+          acc,
+          {name: attrName, ty: attrTy},
+        ) => {
+          acc->flatMap(((gammaN, sigN)) => {
+            switch attrs->Array.getBy(((n, _)) => n == attrName) {
+            | None => Error(`missing field "${attrName}" for struct "${name}"`)
+            | Some((_, val)) =>
+              collectCoreExprTypeSubstsWith(gammaN, val, attrTy)->flatMap(sig => {
+                let gammaN' = substEnv(sig, gammaN)
+                let sig' = substCompose(sig, sigN)
+                Ok((gammaN', sig'))
+              })
+            }
+          })
+        })
+
+        res->map(((_, sig)) => sig)
+      }
+    | None => Error(`undeclared struct "${name}"`)
+    }
+  | CoreAttributeAccessExpr(tau, lhs, attr) =>
+    collectCoreExprTypeSubsts(env, lhs)->flatMap(sig1 => {
+      switch substMono(sig1, lhs->CoreAst.typeOfExpr) {
+      | TyConst(structName, _) =>
+        switch Context.getStruct(structName) {
+        | Some({attributes}) =>
+          switch attributes->Array.getBy(({name}) => name === attr) {
+          | Some({ty: attrTy}) =>
+            unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
+              substCompose(sig2, sig1)
+            )
+          | None => Error(`attribtue "${attr}" does not exist on struct "${structName}"`)
+          }
+        | None =>
+          Error(
+            `tried to access an attribute on non-struct type: ${showMonoTy(
+                lhs->CoreAst.typeOfExpr,
+              )}`,
+          )
+        }
+      | _ =>
+        Error(
+          `tried to access an attribute on non-struct type: ${showMonoTy(lhs->CoreAst.typeOfExpr)}`,
+        )
+      }
+    })
   }
 }
 
@@ -305,8 +356,8 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
     collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
     })
-  | CoreStructDecl(s) => {
-      Context.declareStruct(s)
+  | CoreStructDecl(name, attrs) => {
+      Context.declareStruct(Context.makeStruct(name, attrs, Context.context.structs))
       Ok((env, Subst.empty))
     }
   }

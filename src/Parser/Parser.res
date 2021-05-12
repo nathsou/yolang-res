@@ -93,6 +93,7 @@ let globalAnnotation =
   ))
 
 let var = alt(ident, globalName)->map(x => Ast.VarExpr(x))
+// let term = chainLeft(unary, multOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let unit = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Ast.ConstExpr(UnitConst))
 
@@ -115,6 +116,14 @@ let app = alt(
     args->Array.reduce(f, (f, args) => AppExpr(f, args))
   ),
   primary,
+)
+
+let attributeAccess = alt(
+  leftAssoc(app, then(token(Symbol(Symbol.Dot)), ident), (
+    lhs,
+    (_, attr),
+  ) => Ast.AttributeAccessExpr(lhs, attr)),
+  app,
 )
 
 let unaryOp = anyOf([
@@ -146,7 +155,7 @@ let eqOp = alt(
   token(Symbol(Symbol.Neq))->map(_ => BinOp.Neq),
 )
 
-let factor = app
+let factor = attributeAccess
 
 let unary = alt(then(unaryOp, factor)->map(((op, expr)) => Ast.UnaryOpExpr(op, expr)), factor)
 
@@ -232,9 +241,22 @@ block :=
     assignment,
   ).contents
 
+let structExpr = alt(
+  seq4(
+    uppercaseIdent,
+    token(Symbol(Symbol.Lbracket)),
+    commas(seq3(ident, token(Symbol(Symbol.Colon)), expr)),
+    token(Symbol(Symbol.Rbracket)),
+  )->map(((name, _, entries, _)) => Ast.StructExpr(
+    name,
+    entries->Array.map(((attr, _, ty)) => (attr, ty)),
+  )),
+  block,
+)
+
 let returnExpr = alt(
   then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)),
-  block,
+  structExpr,
 )
 
 let typeAssertion = then(returnExpr, optional(then(token(Keyword(Keywords.As)), type_)))->map(((
@@ -291,7 +313,7 @@ let structDecl = alt(
     token(Symbol(Symbol.Rbracket)),
   )->map(((_, name, _, entries, _)) => {
     let entries = entries->Array.map(((attr, _, ty)) => (attr, ty))
-    Ast.StructDecl(Struct.make(name, entries))
+    Ast.StructDecl(name, entries)
   }),
   globalDecl,
 )

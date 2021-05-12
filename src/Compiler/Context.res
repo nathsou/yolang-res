@@ -10,11 +10,63 @@ type name = {
 type nameRef = ref<name>
 type renameMap = HashMap.Int.t<nameRef>
 
+module Struct = {
+  type attribute = {name: string, offset: int, ty: Types.monoTy}
+  type t = {name: string, attributes: array<attribute>, size: int}
+
+  let show = ({name, attributes}: t) => {
+    "struct " ++
+    name ++
+    "{\n" ++
+    attributes->Array.joinWith(",\n", ({name: attrName, ty}) =>
+      `  ${attrName}: ${Types.showMonoTy(ty)}`
+    ) ++ "\n}"
+  }
+}
+
+module Size = {
+  exception UnkownTypeSize(Types.monoTy)
+
+  let size = (ty: Types.monoTy, structs: HashMap.String.t<Struct.t>) =>
+    switch ty {
+    | TyConst("u32", []) => 4
+    | TyConst("u64", []) => 8
+    | TyConst("bool", []) => 4
+    | TyConst("()", []) => 0 // Zero-sized Type
+    | TyConst("Fun", _) => 4
+    | TyConst("Ptr", _) => 4
+    // | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
+    | TyConst(name, _) =>
+      switch structs->HashMap.String.get(name) {
+      | Some({size}) => size
+      | None => raise(UnkownTypeSize(ty))
+      }
+    | _ => raise(UnkownTypeSize(ty))
+    }
+
+  let sizeLog2 = (ty, structs) =>
+    Int.fromFloat(Js.Math.ceil_float(Js.Math.log2(Float.fromInt(size(ty, structs)))))
+
+  let isZeroSizedType = (ty: Types.monoTy, structs) => ty->size(structs) == 0
+}
+
+let makeStruct = (name, attributes: array<(string, Types.monoTy)>, structs): Struct.t => {
+  let offset = ref(0)
+  let attrs: array<Struct.attribute> = []
+
+  attributes->Array.forEach(((attr, ty)) => {
+    let _ = attrs->Js.Array2.push({name: attr, ty: ty, offset: offset.contents})
+    offset := offset.contents + ty->Size.size(structs)
+  })
+
+  {name: name, attributes: attrs, size: offset.contents}
+}
+
 type t = {
   mutable tyVarIndex: int,
   identifiers: array<string>,
   renaming: renameMap,
-  structs: HashMap.String.t<Ast.Struct.t>,
+  structs: HashMap.String.t<Struct.t>,
 }
 
 let make = (): t => {
@@ -77,6 +129,10 @@ let substIdentifiers = (s: Subst.t): unit => {
   })
 }
 
-let declareStruct = (s: Ast.Struct.t): unit => {
+let declareStruct = (s: Struct.t): unit => {
   context.structs->HashMap.String.set(s.name, s)
+}
+
+let getStruct = (name: string): option<Struct.t> => {
+  context.structs->HashMap.String.get(name)
 }

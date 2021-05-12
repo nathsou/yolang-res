@@ -18,10 +18,12 @@ module CoreAst = {
     | CoreReturnExpr(expr)
     | CoreTypeAssertion(expr, Types.monoTy, Types.monoTy)
     | CoreTupleExpr(array<expr>)
+    | CoreStructExpr(string, array<(string, expr)>)
+    | CoreAttributeAccessExpr(Types.monoTy, expr, string)
   and decl =
     | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
-    | CoreStructDecl(Struct.t)
+    | CoreStructDecl(string, array<(string, Types.monoTy)>)
   and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
 
   let rec typeOfExpr = (expr: expr): monoTy => {
@@ -45,6 +47,8 @@ module CoreAst = {
     | CoreReturnExpr(expr) => typeOfExpr(expr)
     | CoreTypeAssertion(_, _, assertedTy) => assertedTy
     | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
+    | CoreStructExpr(name, _) => TyConst(name, []) // TODO: support polymorhpic structures
+    | CoreAttributeAccessExpr(tau, _, _) => tau
     }
   }
 
@@ -95,6 +99,11 @@ module CoreAst = {
     | CoreTypeAssertion(expr, _, assertedTy) =>
       `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
     | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", showExpr(~subst)) ++ ")"
+    | CoreStructExpr(name, attrs) =>
+      name ++
+      " {\n" ++
+      attrs->Array.joinWith(",\n", ((attr, val)) => attr ++ ": " ++ showExpr(val)) ++ "\n}"
+    | CoreAttributeAccessExpr(tau, lhs, attr) => withType(tau, showExpr(lhs) ++ "." ++ attr)
     }
   }
 
@@ -133,7 +142,7 @@ module CoreAst = {
         x.contents.ty,
         `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(init, ~subst)}`,
       )
-    | CoreStructDecl(s) => s->Struct.show
+    | CoreStructDecl(name, attrs) => Ast.showDecl(Ast.StructDecl(name, attrs))
     }
   }
 
@@ -188,6 +197,10 @@ module CoreAst = {
     | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
     | TypeAssertion(expr, assertedTy) => CoreTypeAssertion(fromExpr(expr), tau(), assertedTy)
     | TupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(fromExpr))
+    | StructExpr(name, attrs) =>
+      CoreStructExpr(name, attrs->Array.map(((attr, val)) => (attr, fromExpr(val))))
+    | AttributeAccessExpr(lhs, attr) =>
+      CoreAttributeAccessExpr(Context.freshTyVar(), fromExpr(lhs), attr)
     }
   }
 
@@ -219,7 +232,7 @@ module CoreAst = {
       }
     | Ast.GlobalDecl(x, mut, init) =>
       CoreGlobalDecl(Context.freshIdentifier(x), mut, fromExpr(init))
-    | Ast.StructDecl(s) => CoreStructDecl(s)
+    | Ast.StructDecl(name, attrs) => CoreStructDecl(name, attrs)
     }
   }
 
@@ -243,6 +256,24 @@ module CoreAst = {
     | CoreTypeAssertion(expr, originalTy, assertedTy) =>
       CoreTypeAssertion(go(expr), subst(originalTy), subst(assertedTy))
     | CoreTupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(go))
+    | CoreStructExpr(name, attrs) =>
+      // reorder attributes to match the struct declaration
+      switch Context.getStruct(name) {
+      | Some({attributes}) => {
+          // O(len(attributes)^2) but who cares in this case?
+          let res =
+            attributes
+            ->Array.map(({name: attrName}) => attrs->Array.getBy(((name, _)) => name == attrName))
+            ->ArrayUtils.mapOption(x => x)
+
+          switch res {
+          | Some(attrs) => CoreStructExpr(name, attrs)
+          | None => Js.Exn.raiseError(`unreachable: missing attribute for struct "${name}"`)
+          }
+        }
+      | None => Js.Exn.raiseError(`unreachable: undeclared struct "${name}'`)
+      }
+    | CoreAttributeAccessExpr(tau, lhs, attr) => CoreAttributeAccessExpr(subst(tau), go(lhs), attr)
     }
   }
 

@@ -48,3 +48,26 @@ let getReverseBy = (arr: array<'a>, pred: 'a => bool): option<'a> => {
 
   res.contents
 }
+
+let mapOption = (optns: array<option<'a>>, f: 'a => 'b): option<array<'b>> => {
+  let res = []
+  let failed = ref(false)
+  let i = ref(0)
+
+  while failed.contents == false && i.contents < optns->Array.length {
+    switch optns->Array.getExn(i.contents) {
+    | Some(v) => {
+        let _ = res->Js.Array2.push(f(v))
+      }
+    | None => failed := true
+    }
+
+    i := i.contents + 1
+  }
+
+  if failed.contents {
+    None
+  } else {
+    Some(res)
+  }
+}

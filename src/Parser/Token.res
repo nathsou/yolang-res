@@ -21,6 +21,7 @@ module Symbol = {
     | Gtr
     | Geq
     | Bang
+    | Dot
 
   let show = s =>
     switch s {
@@ -45,6 +46,7 @@ module Symbol = {
     | Gtr => ">"
     | Geq => ">="
     | Bang => "!"
+    | Dot => "."
     }
 }
 

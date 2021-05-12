@@ -760,6 +760,12 @@ module Global = {
         ),
         Inst.encode(Inst.End),
       )
+
+    let show = init =>
+      switch init {
+      | InitConstI32(n) => Int.toString(n)
+      | InitGetGlobal(idx) => `global.get ${Int.toString(idx)}`
+      }
   }
 
   type t = (ValueType.t, bool, Initializer.t)
@@ -767,8 +773,11 @@ module Global = {
 
   let make = (~isMutable, ty, init): t => (ty, isMutable, init)
 
-  let show = ((ty, mut, _): t) => {
-    `global ${mut ? "mutable" : "immutable"} ` ++ ty->ValueType.show
+  let show = ((ty, mut, init): t) => {
+    `global ${mut ? "mutable" : "immutable"} ` ++
+    ty->ValueType.show ++
+    " = " ++
+    init->Initializer.show
   }
 
   let encode = ((ty, mut, init): t): Vec.t => {

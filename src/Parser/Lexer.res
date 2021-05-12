@@ -62,6 +62,7 @@ let symbol = anyOf([
   char('}')->map(_ => Symbol(Rbracket)),
   char(':')->map(_ => Symbol(Colon)),
   char('!')->map(_ => Symbol(Bang)),
+  char('.')->map(_ => Symbol(Dot)),
 ])
 
 let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])

@@ -12,6 +12,8 @@ module CompilerExn = {
   exception UnsupportedGlobalInitializer(CoreExpr.t)
   exception InvalidTypeAssertion(Types.monoTy, Types.monoTy)
   exception DerefUsedOutsideOfUnsafeBlock
+  exception UndeclaredStruct(string)
+  exception InvalidAttributeAccess(string, Types.monoTy)
 
   let show = exn =>
     switch exn {
@@ -26,7 +28,10 @@ module CompilerExn = {
     | InvalidTypeAssertion(a, b) =>
       `invalid type assertion from ${Types.showMonoTy(a)} to ${Types.showMonoTy(b)}`
     | DerefUsedOutsideOfUnsafeBlock => `the deref operator can only be used in an unsafe block`
-    | Types.UnkownTypeSize(ty) => `unknown type size: ${Types.showMonoTy(ty)}`
+    | Context.Size.UnkownTypeSize(ty) => `unknown type size: ${Types.showMonoTy(ty)}`
+    | UndeclaredStruct(name) => `undeclared struct "${name}"`
+    | InvalidAttributeAccess(attr, ty) =>
+      `${attr} does not exist for type "${Types.showMonoTy(ty)}"`
     | _ => "unexpected compiler exception"
     }
 }
@@ -58,6 +63,11 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("Fun", _) => [I32]
   | TyConst("Ptr", _) => [I32]
   | TyConst("Tuple", tys) => tys->Array.map(wasmValueTypeOf)->Array.concatMany
+  | TyConst(name, _) =>
+    switch Context.getStruct(name) {
+    | Some(_) => [I32]
+    | None => raise(CompilerExn.InvalidTypeConversion(tau))
+    }
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
 }
@@ -109,7 +119,9 @@ module Func = {
     let self: t = {
       name: name,
       locals: [],
-      params: params->Array.keep(((_, xTy)) => !(xTy->Types.isZeroSizedType)),
+      params: params->Array.keep(((_, xTy)) =>
+        !(xTy->Context.Size.isZeroSizedType(Context.context.structs))
+      ),
       ret: ret,
       instructions: [],
     }
@@ -181,13 +193,19 @@ module Global = {
   }
 }
 
+type blockInfo = {
+  isUnsafe: bool,
+  shadowStackDelta: ref<int>,
+}
+
 type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
   mutable scopeDepth: int,
   funcStack: MutableStack.t<Func.t>,
   globals: HashMap.String.t<Global.t>,
-  unsafeBlockStack: MutableStack.t<bool>,
+  stackTop: Global.t,
+  blockStack: MutableStack.t<blockInfo>,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -205,21 +223,60 @@ let emit = (self: t, inst: Wasm.Inst.t): unit => {
   self->getCurrentFuncExn->Func.emit(inst)
 }
 
+let pushShadowStack = (self: t, bytesCount: int): unit => {
+  switch self.blockStack->MutableStack.top {
+  | Some({shadowStackDelta}) =>
+    if bytesCount > 0 {
+      shadowStackDelta.contents = shadowStackDelta.contents + bytesCount
+      self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      self->emit(Wasm.Inst.ConstI32(bytesCount))
+      self->emit(Wasm.Inst.SubI32)
+      self->emit(Wasm.Inst.SetGlobal(self.stackTop.index))
+    }
+  | None => ()
+  }
+}
+
+let popShadowStack = (self: t, bytesCount: int): unit => {
+  switch self.blockStack->MutableStack.top {
+  | Some({shadowStackDelta}) =>
+    if bytesCount > 0 {
+      shadowStackDelta.contents = shadowStackDelta.contents - bytesCount
+      self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      self->emit(Wasm.Inst.ConstI32(bytesCount))
+      self->emit(Wasm.Inst.AddI32)
+      self->emit(Wasm.Inst.SetGlobal(self.stackTop.index))
+    }
+  | None => ()
+  }
+}
+
 let isInUnsafeBlock = (self: t): bool => {
-  switch self.unsafeBlockStack->MutableStack.top {
-  | Some(isUnsafe) => isUnsafe
+  switch self.blockStack->MutableStack.top {
+  | Some({isUnsafe}) => isUnsafe
   | None => false
   }
 }
 
 let beginScope = (self: t, isUnsafe: bool): unit => {
   self.scopeDepth = self.scopeDepth + 1
-  self.unsafeBlockStack->MutableStack.push(isUnsafe || self->isInUnsafeBlock)
+  self.blockStack->MutableStack.push({
+    isUnsafe: isUnsafe || self->isInUnsafeBlock,
+    shadowStackDelta: ref(0),
+  })
 }
 
 let endScope = (self: t): unit => {
   self.scopeDepth = self.scopeDepth - 1
-  let _ = self.unsafeBlockStack->MutableStack.pop
+
+  // restore the shadow stack
+  self->popShadowStack(
+    self.blockStack
+    ->MutableStack.top
+    ->Option.mapWithDefault(0, ({shadowStackDelta}) => shadowStackDelta.contents),
+  )
+
+  let _ = self.blockStack->MutableStack.pop
 }
 
 let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool): unit => {
@@ -264,6 +321,21 @@ let ensureIsInUnsafeBlock = (self: t): unit => {
   }
 }
 
+let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<int, exn> => {
+  switch structTy {
+  | TyConst(structName, []) =>
+    switch Context.getStruct(structName) {
+    | Some({attributes}) =>
+      switch attributes->Array.getBy(({name}) => name == attr) {
+      | Some({offset}) => Ok(offset)
+      | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
+      }
+    | None => Error(CompilerExn.UndeclaredStruct(structName))
+    }
+  | _ => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
+  }
+}
+
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(c) =>
@@ -280,7 +352,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       | Deref => {
           self->ensureIsInUnsafeBlock
 
-          Wasm.Inst.LoadI32(expr->CoreAst.typeOfExpr->Types.sizeLog2, 0)
+          Wasm.Inst.LoadI32(0, 0)
         }
       }
 
@@ -290,7 +362,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   | CoreBinOpExpr(_, lhs, op, rhs) => {
       open Ast.BinOp
 
-      if lhs->CoreAst.typeOfExpr->Types.isZeroSizedType {
+      if lhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs) {
         // () == () is always true
         // () != () is always false
         // this holds for any zero-sized type
@@ -341,14 +413,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreLetInExpr(_, x, valExpr, inExpr) => {
       let x = x.contents
-      if !(valExpr->CoreAst.typeOfExpr->Types.isZeroSizedType) {
+      if !(valExpr->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs)) {
         self->compileExpr(valExpr)
         self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       }
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
-    if x.contents.ty->Types.isZeroSizedType {
+    if x.contents.ty->Context.Size.isZeroSizedType(Context.context.structs) {
       // accessing a zero sized type is a no-op
       ()
     } else {
@@ -359,7 +431,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     }
   | CoreAssignmentExpr(lhs, rhs) =>
-    if rhs->CoreAst.typeOfExpr->Types.isZeroSizedType {
+    if rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs) {
       self->compileExpr(rhs)
     } else {
       switch lhs {
@@ -378,12 +450,26 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           }
         | None => raise(CompilerExn.VariableNotFound(x.contents.name))
         }
+      | CoreAttributeAccessExpr(_, lhs, attr) =>
+        switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
+        | Ok(offset) => {
+            self->compileExpr(lhs)
+            self->compileExpr(rhs)
+            self->emit(Wasm.Inst.StoreI32(0, offset))
+          }
+        | Error(err) => raise(err)
+        }
       | CoreUnaryOpExpr(_, Ast.UnaryOp.Deref, expr) => {
           self->ensureIsInUnsafeBlock
 
           self->compileExpr(expr)
           self->compileExpr(rhs)
-          self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Types.sizeLog2, 0))
+          self->emit(
+            Wasm.Inst.StoreI32(
+              rhs->CoreAst.typeOfExpr->Context.Size.sizeLog2(Context.context.structs),
+              0,
+            ),
+          )
         }
       | _ =>
         raise(CompilerExn.Unimplemented("[unreachable]: assignement to an invalid lhs expression"))
@@ -468,6 +554,51 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     exprs->Array.forEach(expr => {
       self->compileExpr(expr)
     })
+  | CoreStructExpr(name, attrs) => {
+      let structTy = Types.TyConst(name, [])
+
+      self->pushShadowStack(structTy->Context.Size.size(Context.context.structs))
+
+      let offset = ref(0)
+
+      let storeInMemory = expr => {
+        let ty = expr->CoreExpr.typeOf
+        switch ty {
+        | Types.TyConst("u32", []) | Types.TyConst("bool", []) | Types.TyConst("Fun", _) => {
+            // TODO: handle alignment
+            self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+            self->compileExpr(expr)
+            self->emit(Wasm.Inst.StoreI32(0, offset.contents))
+            offset := offset.contents + 4
+          }
+        // | Types.TyConst(name, []) =>
+        //   switch Context.getStruct(name) {
+        //   | Some({attributes}) => attributes->Array.forEach(((_, attrTy)) => storeInMemory(attrTy))
+        //   | None => raise(CompilerExn.UndeclaredStruct(name))
+        //   }
+        | _ =>
+          raise(
+            CompilerExn.Unimplemented(
+              `cannot store ${Types.showMonoTy(ty)} in the shadow stack (yet)`,
+            ),
+          )
+        }
+      }
+
+      attrs->Array.forEach(((_, expr)) => {
+        storeInMemory(expr)
+      })
+
+      self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+    }
+  | CoreAttributeAccessExpr(_, lhs, attr) =>
+    switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
+    | Ok(offset) => {
+        self->compileExpr(lhs)
+        self->emit(Wasm.Inst.LoadI32(0, offset))
+      }
+    | Error(err) => raise(err)
+    }
   }
 }
 
@@ -487,7 +618,7 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
   | CoreLetStmt(x, isMutable, rhs) =>
     self->compileExpr(rhs)
 
-    if !(rhs->CoreAst.typeOfExpr->Types.isZeroSizedType) {
+    if !(rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs)) {
       self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }
@@ -541,8 +672,18 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     scopeDepth: 0,
     funcStack: MutableStack.make(),
     globals: HashMap.String.make(~hintSize=1),
-    unsafeBlockStack: MutableStack.make(),
+    stackTop: Global.make(
+      "__STACK_TOP__",
+      true,
+      Some(Wasm.ValueType.I32),
+      0,
+      Wasm.Global.Initializer.InitConstI32(64 * 1024 - 1),
+    ),
+    blockStack: MutableStack.make(),
   }
+
+  // add the STACK_TOP global
+  self.globals->HashMap.String.set(self.stackTop.name, self.stackTop)
 
   try {
     prog->Array.forEach(self->compileDecl)
