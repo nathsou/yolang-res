@@ -1,18 +1,24 @@
 
-// todo: handle immutability
-struct MinMax {
-  min: u32,
-  max: u32,
+struct MyStruct {
+  a: (),
+  b: (),
+  c: (),
+  d: u32,
+  e: (),
+  f: bool
 }
 
 fn main() {
-  let m1 = MinMax { min: 3, max: 7 };
-  mut m2 = MinMax { min: 1789, max: 1998 };
+  let test = MyStruct {
+    a: (),
+    b: (),
+    c: (),
+    d: 17,
+    e: (),
+    f: true
+  };
 
-  m2.max = 2021;
-  
-  (MinMax {
-    min: m1.min + m2.min,
-    max: m1.max + m2.max 
-  }).max
+  let and = (a, b) -> if a { b } else { false };
+
+  and(test.a == test.e, and(test.d == 17, test.f))
 }

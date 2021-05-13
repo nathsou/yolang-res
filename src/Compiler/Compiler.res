@@ -65,7 +65,7 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("Tuple", tys) => tys->Array.map(wasmValueTypeOf)->Array.concatMany
   | TyConst(name, _) =>
     switch Context.getStruct(name) {
-    | Some(_) => [I32]
+    | Some({size}) => size == 0 ? [] : [I32]
     | None => raise(CompilerExn.InvalidTypeConversion(tau))
     }
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
@@ -321,13 +321,16 @@ let ensureIsInUnsafeBlock = (self: t): unit => {
   }
 }
 
-let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<int, exn> => {
+let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<
+  (int, Types.monoTy),
+  exn,
+> => {
   switch structTy {
   | TyConst(structName, []) =>
     switch Context.getStruct(structName) {
     | Some({attributes}) =>
       switch attributes->Array.getBy(({name}) => name == attr) {
-      | Some({offset}) => Ok(offset)
+      | Some({offset, ty}) => Ok((offset, ty))
       | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
       }
     | None => Error(CompilerExn.UndeclaredStruct(structName))
@@ -452,7 +455,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         }
       | CoreAttributeAccessExpr(_, lhs, attr) =>
         switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
-        | Ok(offset) => {
+        | Ok((offset, _)) => {
             self->compileExpr(lhs)
             self->compileExpr(rhs)
             self->emit(Wasm.Inst.StoreI32(0, offset))
@@ -556,8 +559,9 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     })
   | CoreStructExpr(name, attrs) => {
       let structTy = Types.TyConst(name, [])
+      let structSize = structTy->Context.Size.size(Context.context.structs)
 
-      self->pushShadowStack(structTy->Context.Size.size(Context.context.structs))
+      self->pushShadowStack(structSize)
 
       let offset = ref(0)
 
@@ -571,6 +575,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
             self->emit(Wasm.Inst.StoreI32(0, offset.contents))
             offset := offset.contents + 4
           }
+        | Types.TyConst("()", []) => ()
         // | Types.TyConst(name, []) =>
         //   switch Context.getStruct(name) {
         //   | Some({attributes}) => attributes->Array.forEach(((_, attrTy)) => storeInMemory(attrTy))
@@ -589,11 +594,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         storeInMemory(expr)
       })
 
-      self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      if structSize > 0 {
+        self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      }
     }
   | CoreAttributeAccessExpr(_, lhs, attr) =>
     switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
-    | Ok(offset) => {
+    | Ok((offset, attrTy)) =>
+      if !(attrTy->Context.Size.isZeroSizedType(Context.context.structs)) {
         self->compileExpr(lhs)
         self->emit(Wasm.Inst.LoadI32(0, offset))
       }
