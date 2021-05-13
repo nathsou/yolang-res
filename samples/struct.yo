@@ -11,7 +11,9 @@ fn main() {
     max: 1998
   };
 
+  let diff = (a, b) -> a - b;
+
   m.max = 2021;
   
-  m.max - m.min
+  diff(m.max, m.min)
 }

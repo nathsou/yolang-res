@@ -689,10 +689,13 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(41, None)))
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(5, None)))
 
     // add globals
-    self.globals->HashMap.String.forEach((_, global) => {
+    self.globals
+    ->HashMap.String.valuesToArray
+    ->SortArray.stableSortBy((a, b) => a.index - b.index)
+    ->Array.forEach(global => {
       switch global->Global.toWasmGlobal {
       | Some(global) => self.mod->Wasm.Module.addGlobal(global)
       | None => ()
