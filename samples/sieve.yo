@@ -1,45 +1,59 @@
 
 let SIZEOF_U32 = 4;
 
-fn read(addr) unsafe {
-  *(addr as Ptr<u32>)
+struct Array {
+  start: Ptr<u32>,
+  length: u32,
+  capacity: u32,
 }
 
-fn write(addr, val) unsafe {
-  *(addr as Ptr<u32>) = val;
+fn read(array, n) unsafe {
+  *(((array.start as u32) + n * SIZEOF_U32) as Ptr<u32>)
 }
 
-fn checkPrimeSieve(n, count) {
-  mut addr = 0;
-  mut p = read(addr);
+fn write(array, n, val) unsafe {
+  *(((array.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
+}
+
+fn push(array, val) unsafe {
+  write(array, array.length, val);
+  array.length = array.length + 1;
+}
+
+fn checkPrimeSieve(primes, n) {
+  mut i = 0;
+  mut p = read(primes, i);
+
   while p * p <= n {
-    if n % p == 0 { return false; }
-    addr = addr + SIZEOF_U32;
-    p = read(addr);
+    if n % p == 0 { return; }
+    i = i + 1;
+    p = read(primes, i);
   }
 
   // add this prime to the sieve
-  write(count * SIZEOF_U32, n);
-  true
+  push(primes, n);
 }
 
 fn countPrimesLessThan(m) {
+  mut primes = Array {
+    // right after the shadow stack
+    start: 65536 as Ptr<u32>,
+    length: 0,
+    capacity: 100000
+  };
+
   // 2 is the first prime
-  write(0, 2);
+  push(primes, 2);
+
   mut i = 3;
-  mut count = 1;
-
   while i <= m {
-    if checkPrimeSieve(i, count) {
-      count = count + 1;
-    }
-
+    checkPrimeSieve(primes, i);
     i = i + 2;
   }
 
-  count
+  primes.length
 }
 
 fn main() {
-  countPrimesLessThan(1000000)
+  countPrimesLessThan(10000000)
 }

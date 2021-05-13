@@ -255,7 +255,7 @@ let structExpr = alt(
 )
 
 let returnExpr = alt(
-  then(token(Keyword(Keywords.Return)), expr)->map(((_, ret)) => Ast.ReturnExpr(ret)),
+  then(token(Keyword(Keywords.Return)), optional(expr))->map(((_, ret)) => Ast.ReturnExpr(ret)),
   structExpr,
 )
 

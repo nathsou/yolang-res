@@ -536,7 +536,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     }
   | CoreReturnExpr(expr) => {
-      self->compileExpr(expr)
+      switch expr {
+      | Some(ret) => self->compileExpr(ret)
+      | None => ()
+      }
+
       self->emit(Wasm.Inst.Return)
     }
   | CoreFuncExpr(_, originalName, args, body) => {
@@ -602,7 +606,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         switch ty {
         | Types.TyConst("u32", [])
         | Types.TyConst("bool", [])
-        | Types.TyConst("Fun", _) =>
+        | Types.TyConst("Fun", _)
+        | Types.TyConst("Ptr", [_]) =>
           storeNbytes(4)
         | Types.TyConst("()", []) => ()
         | Types.TyStruct(structTy) =>
@@ -616,9 +621,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           }
         | _ =>
           raise(
-            CompilerExn.Unimplemented(
-              `cannot store ${Types.showMonoTy(ty)} in the shadow stack (yet)`,
-            ),
+            CompilerExn.Unimplemented(`cannot store ${Types.showMonoTy(ty)} in the shadow stack`),
           )
         }
       }
@@ -726,7 +729,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(5, None)))
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(42, None)))
 
     // add globals
     self.globals

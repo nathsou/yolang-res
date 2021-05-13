@@ -15,7 +15,7 @@ module CoreAst = {
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>, blockSafety)
     | CoreIfExpr(monoTy, expr, expr, expr)
     | CoreWhileExpr(expr, expr)
-    | CoreReturnExpr(expr)
+    | CoreReturnExpr(option<expr>)
     | CoreTypeAssertion(expr, Types.monoTy, Types.monoTy)
     | CoreTupleExpr(array<expr>)
     | CoreStructExpr(string, array<(string, expr)>)
@@ -44,7 +44,7 @@ module CoreAst = {
     | CoreBlockExpr(tau, _, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
-    | CoreReturnExpr(expr) => typeOfExpr(expr)
+    | CoreReturnExpr(expr) => expr->Option.mapWithDefault(unitTy, typeOfExpr)
     | CoreTypeAssertion(_, _, assertedTy) => assertedTy
     | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
     | CoreStructExpr(name, _) => TyStruct(NamedStruct(name))
@@ -95,7 +95,8 @@ module CoreAst = {
         (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
     | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
-    | CoreReturnExpr(expr) => "return " ++ withType(typeOfExpr(expr), showExpr(expr))
+    | CoreReturnExpr(ret) =>
+      "return " ++ withType(typeOfExpr(expr), ret->Option.mapWithDefault("", showExpr(~subst)))
     | CoreTypeAssertion(expr, _, assertedTy) =>
       `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
     | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", showExpr(~subst)) ++ ")"
@@ -189,7 +190,7 @@ module CoreAst = {
         elseE->Option.mapWithDefault(CoreConstExpr(Const.UnitConst), fromExpr),
       )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
-    | ReturnExpr(expr) => CoreReturnExpr(fromExpr(expr))
+    | ReturnExpr(expr) => CoreReturnExpr(expr->Option.map(fromExpr))
     | TypeAssertion(expr, assertedTy) => CoreTypeAssertion(fromExpr(expr), tau(), assertedTy)
     | TupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(fromExpr))
     | StructExpr(name, attrs) =>
@@ -247,7 +248,7 @@ module CoreAst = {
       CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(go), safety)
     | CoreIfExpr(tau, cond, thenE, elseE) => CoreIfExpr(subst(tau), go(cond), go(thenE), go(elseE))
     | CoreWhileExpr(cond, body) => CoreWhileExpr(go(cond), go(body))
-    | CoreReturnExpr(expr) => CoreReturnExpr(go(expr))
+    | CoreReturnExpr(expr) => CoreReturnExpr(expr->Option.map(go))
     | CoreTypeAssertion(expr, originalTy, assertedTy) =>
       CoreTypeAssertion(go(expr), subst(originalTy), subst(assertedTy))
     | CoreTupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(go))
