@@ -1,24 +1,21 @@
 
-struct MyStruct {
-  a: (),
-  b: (),
-  c: (),
-  d: u32,
-  e: (),
-  f: bool
+struct MinMax {
+  min: u32,
+  max: u32
+}
+
+struct Test {
+  a: u32,
+  b: MinMax,
+  c: MinMax,
 }
 
 fn main() {
-  let test = MyStruct {
-    a: (),
-    b: (),
-    c: (),
-    d: 17,
-    e: (),
-    f: true
+  let t = Test {
+    a: 3,
+    b: MinMax { min: 10, max: 100 },
+    c: MinMax { min: 1789, max: 1998 },
   };
 
-  let and = (a, b) -> if a { b } else { false };
-
-  and(test.a == test.e, and(test.d == 17, test.f))
+  t.c.min
 }

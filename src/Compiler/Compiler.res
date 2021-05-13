@@ -119,9 +119,7 @@ module Func = {
     let self: t = {
       name: name,
       locals: [],
-      params: params->Array.keep(((_, xTy)) =>
-        !(xTy->Context.Size.isZeroSizedType(Context.context.structs))
-      ),
+      params: params->Array.keep(((_, xTy)) => !(xTy->Context.Size.isZeroSizedType)),
       ret: ret,
       instructions: [],
     }
@@ -321,8 +319,14 @@ let ensureIsInUnsafeBlock = (self: t): unit => {
   }
 }
 
+type structAttributeInfo = {
+  offset: int,
+  ty: Types.monoTy,
+  size: int,
+}
+
 let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<
-  (int, Types.monoTy),
+  structAttributeInfo,
   exn,
 > => {
   switch structTy {
@@ -330,7 +334,7 @@ let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<
     switch Context.getStruct(structName) {
     | Some({attributes}) =>
       switch attributes->Array.getBy(({name}) => name == attr) {
-      | Some({offset, ty}) => Ok((offset, ty))
+      | Some({offset, ty, size}) => Ok({offset: offset, ty: ty, size: size})
       | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
       }
     | None => Error(CompilerExn.UndeclaredStruct(structName))
@@ -365,7 +369,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   | CoreBinOpExpr(_, lhs, op, rhs) => {
       open Ast.BinOp
 
-      if lhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs) {
+      if lhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType {
         // () == () is always true
         // () != () is always false
         // this holds for any zero-sized type
@@ -416,14 +420,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
     }
   | CoreLetInExpr(_, x, valExpr, inExpr) => {
       let x = x.contents
-      if !(valExpr->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs)) {
+      if !(valExpr->CoreAst.typeOfExpr->Context.Size.isZeroSizedType) {
         self->compileExpr(valExpr)
         self->declareLocalVar(x.name, x.ty, ~isMutable=false)
       }
       self->compileExpr(inExpr)
     }
   | CoreVarExpr(x) =>
-    if x.contents.ty->Context.Size.isZeroSizedType(Context.context.structs) {
+    if x.contents.ty->Context.Size.isZeroSizedType {
       // accessing a zero sized type is a no-op
       ()
     } else {
@@ -434,8 +438,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     }
   | CoreAssignmentExpr(lhs, rhs) =>
-    if rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs) {
-      self->compileExpr(rhs)
+    if rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType {
+      ()
     } else {
       switch lhs {
       | CoreVarExpr(x) =>
@@ -455,7 +459,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         }
       | CoreAttributeAccessExpr(_, lhs, attr) =>
         switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
-        | Ok((offset, _)) => {
+        | Ok({offset, size}) =>
+          if size > 0 {
             self->compileExpr(lhs)
             self->compileExpr(rhs)
             self->emit(Wasm.Inst.StoreI32(0, offset))
@@ -467,12 +472,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
           self->compileExpr(expr)
           self->compileExpr(rhs)
-          self->emit(
-            Wasm.Inst.StoreI32(
-              rhs->CoreAst.typeOfExpr->Context.Size.sizeLog2(Context.context.structs),
-              0,
-            ),
-          )
+          self->emit(Wasm.Inst.StoreI32(rhs->CoreAst.typeOfExpr->Context.Size.sizeLog2, 0))
         }
       | _ =>
         raise(CompilerExn.Unimplemented("[unreachable]: assignement to an invalid lhs expression"))
@@ -558,29 +558,44 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->compileExpr(expr)
     })
   | CoreStructExpr(name, attrs) => {
-      let structTy = Types.TyConst(name, [])
-      let structSize = structTy->Context.Size.size(Context.context.structs)
+      let {size: structSize, attributes} = Context.getStruct(name)->Option.getExn
 
       self->pushShadowStack(structSize)
+
+      // each attribute needs the address of the begining of the struct
+      attributes->Array.forEach(({ty}) => {
+        if ty->Context.Size.size > 0 {
+          self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+        }
+      })
+
+      // the return address of the expression
+      if structSize > 0 {
+        self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      }
 
       let offset = ref(0)
 
       let storeInMemory = expr => {
+        let storeNbytes = (n: int) => {
+          // TODO: handle alignment
+          self->compileExpr(expr)
+          self->emit(Wasm.Inst.StoreI32(0, offset.contents))
+          offset := offset.contents + n
+        }
+
         let ty = expr->CoreExpr.typeOf
         switch ty {
-        | Types.TyConst("u32", []) | Types.TyConst("bool", []) | Types.TyConst("Fun", _) => {
-            // TODO: handle alignment
-            self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
-            self->compileExpr(expr)
-            self->emit(Wasm.Inst.StoreI32(0, offset.contents))
-            offset := offset.contents + 4
-          }
+        | Types.TyConst("u32", [])
+        | Types.TyConst("bool", [])
+        | Types.TyConst("Fun", _) =>
+          storeNbytes(4)
         | Types.TyConst("()", []) => ()
-        // | Types.TyConst(name, []) =>
-        //   switch Context.getStruct(name) {
-        //   | Some({attributes}) => attributes->Array.forEach(((_, attrTy)) => storeInMemory(attrTy))
-        //   | None => raise(CompilerExn.UndeclaredStruct(name))
-        //   }
+        | Types.TyConst(name, []) =>
+          switch Context.getStruct(name) {
+          | Some(_) => storeNbytes(4)
+          | None => raise(CompilerExn.UndeclaredStruct(name))
+          }
         | _ =>
           raise(
             CompilerExn.Unimplemented(
@@ -593,15 +608,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       attrs->Array.forEach(((_, expr)) => {
         storeInMemory(expr)
       })
-
-      if structSize > 0 {
-        self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
-      }
     }
   | CoreAttributeAccessExpr(_, lhs, attr) =>
     switch getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
-    | Ok((offset, attrTy)) =>
-      if !(attrTy->Context.Size.isZeroSizedType(Context.context.structs)) {
+    | Ok({offset, ty: attrTy}) =>
+      if !(attrTy->Context.Size.isZeroSizedType) {
         self->compileExpr(lhs)
         self->emit(Wasm.Inst.LoadI32(0, offset))
       }
@@ -626,7 +637,7 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
   | CoreLetStmt(x, isMutable, rhs) =>
     self->compileExpr(rhs)
 
-    if !(rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType(Context.context.structs)) {
+    if !(rhs->CoreAst.typeOfExpr->Context.Size.isZeroSizedType) {
       self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }

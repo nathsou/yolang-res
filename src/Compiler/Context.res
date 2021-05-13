@@ -11,7 +11,7 @@ type nameRef = ref<name>
 type renameMap = HashMap.Int.t<nameRef>
 
 module Struct = {
-  type attribute = {name: string, offset: int, ty: Types.monoTy}
+  type attribute = {name: string, offset: int, ty: Types.monoTy, size: int}
   type t = {name: string, attributes: array<attribute>, size: int}
 
   let show = ({name, attributes}: t) => {
@@ -27,7 +27,7 @@ module Struct = {
 module Size = {
   exception UnkownTypeSize(Types.monoTy)
 
-  let size = (ty: Types.monoTy, structs: HashMap.String.t<Struct.t>) =>
+  let size = (ty: Types.monoTy) =>
     switch ty {
     | TyConst("u32", []) => 4
     | TyConst("u64", []) => 8
@@ -36,27 +36,23 @@ module Size = {
     | TyConst("Fun", _) => 4
     | TyConst("Ptr", _) => 4
     // | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
-    | TyConst(name, _) =>
-      switch structs->HashMap.String.get(name) {
-      | Some({size}) => size
-      | None => raise(UnkownTypeSize(ty))
-      }
+    | TyConst(_, _) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
     }
 
-  let sizeLog2 = (ty, structs) =>
-    Int.fromFloat(Js.Math.ceil_float(Js.Math.log2(Float.fromInt(size(ty, structs)))))
+  let sizeLog2 = ty => Int.fromFloat(Js.Math.ceil_float(Js.Math.log2(Float.fromInt(size(ty)))))
 
-  let isZeroSizedType = (ty: Types.monoTy, structs) => ty->size(structs) == 0
+  let isZeroSizedType = (ty: Types.monoTy) => ty->size == 0
 }
 
-let makeStruct = (name, attributes: array<(string, Types.monoTy)>, structs): Struct.t => {
+let makeStruct = (name, attributes: array<(string, Types.monoTy)>): Struct.t => {
   let offset = ref(0)
   let attrs: array<Struct.attribute> = []
 
   attributes->Array.forEach(((attr, ty)) => {
-    let _ = attrs->Js.Array2.push({name: attr, ty: ty, offset: offset.contents})
-    offset := offset.contents + ty->Size.size(structs)
+    let size = ty->Size.size
+    let _ = attrs->Js.Array2.push({name: attr, ty: ty, offset: offset.contents, size: size})
+    offset := offset.contents + size
   })
 
   {name: name, attributes: attrs, size: offset.contents}

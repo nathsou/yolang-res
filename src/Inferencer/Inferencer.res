@@ -357,7 +357,7 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
     })
   | CoreStructDecl(name, attrs) => {
-      Context.declareStruct(Context.makeStruct(name, attrs, Context.context.structs))
+      Context.declareStruct(Context.makeStruct(name, attrs))
       Ok((env, Subst.empty))
     }
   }
