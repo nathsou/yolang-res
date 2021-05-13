@@ -6,14 +6,13 @@ struct MinMax {
 }
 
 fn main() {
-  mut m = MinMax {
-    min: 1789,
-    max: 1998
-  };
+  let m1 = MinMax { min: 3, max: 7 };
+  mut m2 = MinMax { min: 1789, max: 1998 };
 
-  let diff = (a, b) -> a - b;
-
-  m.max = 2021;
+  m2.max = 2021;
   
-  diff(m.max, m.min)
+  (MinMax {
+    min: m1.min + m2.min,
+    max: m1.max + m2.max 
+  }).max
 }

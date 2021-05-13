@@ -713,7 +713,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
       Wasm.Table.make(Wasm.ReferenceType.FuncRef, Wasm.Limits.makeExact(self.funcs->Array.length)),
     )
 
-    // compile function
+    // compile functions
     self.funcs->Array.forEach(f => {
       let (_, sig, body) = f->Func.toWasmFunc
       let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)

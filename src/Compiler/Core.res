@@ -179,12 +179,7 @@ module CoreAst = {
       }
     | AppExpr(f, args) => CoreAppExpr(tau(), fromExpr(f), args->Array.map(arg => fromExpr(arg)))
     | BlockExpr(stmts, lastExpr, safety) =>
-      switch (stmts, lastExpr) {
-      // simplify { e1 } into e1
-      | ([], Some(e1)) if safety == Safe => fromExpr(e1)
-      | _ =>
-        CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr), safety)
-      }
+      CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr), safety)
     | IfExpr(cond, thenE, elseE) =>
       // if the else expression is missing, replace it by unit
       CoreIfExpr(
@@ -264,7 +259,7 @@ module CoreAst = {
           let res =
             attributes
             ->Array.map(({name: attrName}) => attrs->Array.getBy(((name, _)) => name == attrName))
-            ->ArrayUtils.mapOption(x => x)
+            ->ArrayUtils.mapOption(((attrName, val)) => (attrName, go(val)))
 
           switch res {
           | Some(attrs) => CoreStructExpr(name, attrs)
