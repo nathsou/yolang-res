@@ -57,7 +57,7 @@ let primitiveType = alt(
     switch t {
     | Identifier("u32") => Some(Types.u32Ty)
     | Identifier("bool") => Some(Types.boolTy)
-    | UppercaseIdentifier(name) => Some(Types.TyConst(name, []))
+    | UppercaseIdentifier(name) => Some(Types.TyStruct(Types.NamedStruct(name)))
     | _ => None
     }
   ),

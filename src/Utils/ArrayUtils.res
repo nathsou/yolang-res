@@ -71,3 +71,25 @@ let mapOption = (optns: array<option<'a>>, f: 'a => 'b): option<array<'b>> => {
     Some(res)
   }
 }
+
+let mapResult = (optns: array<result<'a, 'b>>, f: 'a => 'c): result<array<'c>, 'b> => {
+  let res = []
+  let failure = ref(None)
+  let i = ref(0)
+
+  while failure.contents->Option.isNone && i.contents < optns->Array.length {
+    switch optns->Array.getExn(i.contents) {
+    | Ok(v) => {
+        let _ = res->Js.Array2.push(f(v))
+      }
+    | Error(err) => failure := Some(err)
+    }
+
+    i := i.contents + 1
+  }
+
+  switch failure.contents {
+  | Some(err) => Error(err)
+  | None => Ok(res)
+  }
+}

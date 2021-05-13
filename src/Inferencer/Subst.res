@@ -13,6 +13,13 @@ let rec substMono = (s: t, ty: monoTy): monoTy =>
     | None => TyVar(x)
     }
   | TyConst(name, args) => TyConst(name, args->Array.map(substMono(s)))
+  | TyStruct(structTy) =>
+    TyStruct(
+      switch structTy {
+      | NamedStruct(name) => NamedStruct(name)
+      | PartialStruct(attrs) => PartialStruct(attrs->Map.String.map(substMono(s)))
+      },
+    )
   }
 
 let substPoly = (s: t, (polyVars, ty): polyTy) => {
@@ -20,7 +27,7 @@ let substPoly = (s: t, (polyVars, ty): polyTy) => {
 }
 
 let substCompose = (s1: t, s2: t): t =>
-  Map.Int.map(s2, substMono(s1))->Map.Int.merge(s1, (_, a, b) => Js.Option.firstSome(a, b))
+  Map.Int.map(s2, substMono(s1))->Map.Int.merge(s1, (_, a, b) => Js.Option.firstSome(b, a))
 
 let substComposeMany = (h, tl) => tl->Array.reduce(h, substCompose)
 

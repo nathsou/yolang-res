@@ -14,6 +14,7 @@ module CompilerExn = {
   exception DerefUsedOutsideOfUnsafeBlock
   exception UndeclaredStruct(string)
   exception InvalidAttributeAccess(string, Types.monoTy)
+  exception StructTypeNotMatched(Types.monoTy)
 
   let show = exn =>
     switch exn {
@@ -32,6 +33,8 @@ module CompilerExn = {
     | UndeclaredStruct(name) => `undeclared struct "${name}"`
     | InvalidAttributeAccess(attr, ty) =>
       `${attr} does not exist for type "${Types.showMonoTy(ty)}"`
+    | StructTypeNotMatched(ty) =>
+      `[compiler] No struct declaration matches type ${Types.showMonoTy(ty)}`
     | _ => "unexpected compiler exception"
     }
 }
@@ -63,10 +66,14 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("Fun", _) => [I32]
   | TyConst("Ptr", _) => [I32]
   | TyConst("Tuple", tys) => tys->Array.map(wasmValueTypeOf)->Array.concatMany
-  | TyConst(name, _) =>
-    switch Context.getStruct(name) {
-    | Some({size}) => size == 0 ? [] : [I32]
-    | None => raise(CompilerExn.InvalidTypeConversion(tau))
+  | TyStruct(structTy) =>
+    switch structTy {
+    | NamedStruct(name) =>
+      switch Context.getStruct(name) {
+      | Some({size}) => size == 0 ? [] : [I32]
+      | None => raise(CompilerExn.InvalidTypeConversion(tau))
+      }
+    | PartialStruct(_) => raise(CompilerExn.StructTypeNotMatched(tau))
     }
   | _ => raise(CompilerExn.InvalidTypeConversion(tau))
   }
@@ -330,14 +337,21 @@ let getStructAttributeOffset = (structTy: Types.monoTy, attr: string): result<
   exn,
 > => {
   switch structTy {
-  | TyConst(structName, []) =>
-    switch Context.getStruct(structName) {
-    | Some({attributes}) =>
-      switch attributes->Array.getBy(({name}) => name == attr) {
-      | Some({offset, ty, size}) => Ok({offset: offset, ty: ty, size: size})
-      | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
+  | TyStruct(ty) =>
+    switch ty {
+    | NamedStruct(name) =>
+      switch Context.getStruct(name) {
+      | Some({attributes}) =>
+        switch attributes->Array.getBy(({name}) => name == attr) {
+        | Some({offset, ty, size}) => Ok({offset: offset, ty: ty, size: size})
+        | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
+        }
+      | None => Error(CompilerExn.UndeclaredStruct(name))
       }
-    | None => Error(CompilerExn.UndeclaredStruct(structName))
+    | PartialStruct(_) => {
+        Js.log("hey " ++ Types.showMonoTy(structTy))
+        Error(CompilerExn.StructTypeNotMatched(structTy))
+      }
     }
   | _ => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
   }
@@ -591,10 +605,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         | Types.TyConst("Fun", _) =>
           storeNbytes(4)
         | Types.TyConst("()", []) => ()
-        | Types.TyConst(name, []) =>
-          switch Context.getStruct(name) {
-          | Some(_) => storeNbytes(4)
-          | None => raise(CompilerExn.UndeclaredStruct(name))
+        | Types.TyStruct(structTy) =>
+          switch structTy {
+          | Types.NamedStruct(name) =>
+            switch Context.getStruct(name) {
+            | Some(_) => storeNbytes(4)
+            | None => raise(CompilerExn.UndeclaredStruct(name))
+            }
+          | _ => raise(CompilerExn.StructTypeNotMatched(ty))
           }
         | _ =>
           raise(

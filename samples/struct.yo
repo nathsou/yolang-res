@@ -4,18 +4,23 @@ struct MinMax {
   max: u32
 }
 
-struct Test {
-  a: u32,
-  b: MinMax,
-  c: MinMax,
+struct MinMax2 {
+  min: u32,
+  maxx: u32
+}
+
+fn reset(m) {
+  m.min = 0;
+  m.max = 0;
 }
 
 fn main() {
-  let t = Test {
-    a: 3,
-    b: MinMax { min: 10, max: 100 },
-    c: MinMax { min: 1789, max: 1998 },
+  let m = MinMax {
+    min: 1789,
+    max: 1998
   };
 
-  t.c.min
+  reset(m);
+
+  m.min + m.max == 0
 }

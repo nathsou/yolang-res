@@ -22,12 +22,22 @@ module Struct = {
       `  ${attrName}: ${Types.showMonoTy(ty)}`
     ) ++ "\n}"
   }
+
+  let toPartialStructType = ({attributes}: t) => {
+    Types.TyStruct(
+      Types.PartialStruct(
+        attributes->Array.reduce(Map.String.empty, (acc, {name, ty}) => {
+          acc->Map.String.set(name, ty)
+        }),
+      ),
+    )
+  }
 }
 
 module Size = {
   exception UnkownTypeSize(Types.monoTy)
 
-  let size = (ty: Types.monoTy) =>
+  let rec size = (ty: Types.monoTy) =>
     switch ty {
     | TyConst("u32", []) => 4
     | TyConst("u64", []) => 8
@@ -35,8 +45,8 @@ module Size = {
     | TyConst("()", []) => 0 // Zero-sized Type
     | TyConst("Fun", _) => 4
     | TyConst("Ptr", _) => 4
-    // | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
-    | TyConst(_, _) => 4 // structs are references
+    | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
+    | TyStruct(_) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
     }
 

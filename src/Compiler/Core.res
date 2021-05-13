@@ -47,7 +47,7 @@ module CoreAst = {
     | CoreReturnExpr(expr) => typeOfExpr(expr)
     | CoreTypeAssertion(_, _, assertedTy) => assertedTy
     | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
-    | CoreStructExpr(name, _) => TyConst(name, []) // TODO: support polymorhpic structures
+    | CoreStructExpr(name, _) => TyStruct(NamedStruct(name))
     | CoreAttributeAccessExpr(tau, _, _) => tau
     }
   }

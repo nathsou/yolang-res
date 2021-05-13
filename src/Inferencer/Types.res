@@ -1,6 +1,7 @@
 open Belt
 
-type rec monoTy = TyVar(int) | TyConst(string, array<monoTy>)
+type rec monoTy = TyVar(int) | TyConst(string, array<monoTy>) | TyStruct(structTy)
+and structTy = NamedStruct(string) | PartialStruct(Map.String.t<monoTy>)
 
 type polyTy = (array<int>, monoTy)
 
@@ -35,6 +36,12 @@ let rec freeTyVarsMonoTy = (ty: monoTy) => {
   switch ty {
   | TyVar(a) => empty->add(a)
   | TyConst(_, args) => args->Array.map(freeTyVarsMonoTy)->Array.reduce(empty, union)
+  | TyStruct(structTy) =>
+    switch structTy {
+    | NamedStruct(_) => empty
+    | PartialStruct(attrs) =>
+      attrs->Map.String.valuesToArray->Array.map(freeTyVarsMonoTy)->Array.reduce(empty, union)
+    }
   }
 }
 
@@ -85,6 +92,15 @@ let rec showMonoTy = ty =>
       | "Tuple" => `(${args->Array.joinWith(", ", showMonoTy)})`
       | _ => `${name}<${args->Array.joinWith(", ", showMonoTy)}>`
       }
+    }
+  | TyStruct(structTy) =>
+    switch structTy {
+    | NamedStruct(name) => name
+    | PartialStruct(attrs) =>
+      "{ " ++
+      attrs
+      ->Map.String.toArray
+      ->Array.joinWith(", ", ((attr, ty)) => attr ++ ": " ++ ty->showMonoTy) ++ " }"
     }
   }
 
