@@ -12,6 +12,7 @@ jobs:
           npm install
           npm run build
           cd playground
+          npm install
           npm run build
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.1
