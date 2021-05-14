@@ -340,89 +340,90 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       }
     | None => Error(`undeclared struct "${name}"`)
     }
-  | CoreAttributeAccessExpr(tau, lhs, attr) => {
+  | CoreAttributeAccessExpr(tau, lhs, attr) =>
+    collectCoreExprTypeSubsts(env, lhs)->flatMap(sig1 => {
+      let lhsTy = lhs->CoreAst.typeOfExpr
+      let sig1LhsTy = substMono(sig1, lhsTy)
+
       // when the lhs's type is not a struct during the first pass
       let reCheck = sig => {
-        collectCoreExprTypeSubstsWith(substEnv(sig, env), expr, substMono(sig, tau))
+        if sig1LhsTy != substMono(sig, lhsTy) {
+          collectCoreExprTypeSubstsWith(substEnv(sig, env), expr, substMono(sig, tau))
+        } else {
+          Ok(sig)
+        }
       }
 
-      collectCoreExprTypeSubsts(env, lhs)->flatMap(sig1 => {
-        let lhsTy = lhs->CoreAst.typeOfExpr
-        let sig1LhsTy = substMono(sig1, lhsTy)
-
-        switch sig1LhsTy {
-        | TyStruct(structTy) =>
-          switch structTy {
-          | NamedStruct(name) =>
-            switch Context.getStruct(name) {
-            | Some({attributes}) =>
-              switch attributes->Array.getBy(({name}) => name === attr) {
-              | Some({ty: attrTy}) =>
-                unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
-                  substCompose(sig2, sig1)
-                )
-              | None => Error(`attribute "${attr}" does not exist on struct "${name}"`)
-              }
-            | None => Error(`undeclared struct: "${name}"`)
-            }
-          | PartialStruct(attrs) =>
-            switch attrs->Attributes.toMap->Map.String.get(attr) {
-            | Some(attrTy) =>
+      switch sig1LhsTy {
+      | TyStruct(structTy) =>
+        switch structTy {
+        | NamedStruct(name) =>
+          switch Context.getStruct(name) {
+          | Some({attributes}) =>
+            switch attributes->Array.getBy(({name}) => name === attr) {
+            | Some({ty: attrTy}) =>
               unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
                 substCompose(sig2, sig1)
               )
-            | None => {
-                open StructMatching
+            | None => Error(`attribute "${attr}" does not exist on struct "${name}"`)
+            }
+          | None => Error(`undeclared struct: "${name}"`)
+          }
+        | PartialStruct(attrs) =>
+          switch attrs->Attributes.toMap->Map.String.get(attr) {
+          | Some(attrTy) =>
+            unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
+              substCompose(sig2, sig1)
+            )
+          | None => {
+              open StructMatching
 
-                // extend this partial struct with this attribute
-                let extendedAttrs = attrs->Attributes.insert(attr, tau)
-                let extendedStructTy = substMono(sig1, TyStruct(PartialStruct(extendedAttrs)))
+              // extend this partial struct with this attribute
+              let extendedAttrs = attrs->Attributes.insert(attr, tau)
+              let extendedStructTy = substMono(sig1, TyStruct(PartialStruct(extendedAttrs)))
 
-                switch findMatchingStruct(extendedAttrs) {
-                | OneMatch(matchingStruct) =>
-                  unify(sig1LhsTy, TyStruct(NamedStruct(matchingStruct.name)))->flatMap(sig2 => {
-                    let sig21 = substCompose(sig2, sig1)
-
-                    reCheck(sig21)
-                  })
-                | MultipleMatches(_) =>
-                  unify(sig1LhsTy, extendedStructTy)->flatMap(sig2 =>
-                    reCheck(substCompose(sig2, sig1))
-                  )
-                | NoMatch =>
-                  switch lhsTy {
-                  | TyVar(alpha) =>
-                    Ok(substCompose(Subst.empty->Map.Int.set(alpha, extendedStructTy), sig1))
-                  | _ => unify(lhsTy, extendedStructTy)->map(sig2 => substCompose(sig2, sig1))
-                  }
+              switch findMatchingStruct(extendedAttrs) {
+              | OneMatch(matchingStruct) =>
+                unify(sig1LhsTy, TyStruct(NamedStruct(matchingStruct.name)))->flatMap(sig2 => {
+                  let sig21 = substCompose(sig2, sig1)
+                  reCheck(sig21)
+                })
+              | MultipleMatches(_) =>
+                unify(sig1LhsTy, extendedStructTy)->flatMap(sig2 =>
+                  reCheck(substCompose(sig2, sig1))
+                )
+              | NoMatch =>
+                switch lhsTy {
+                | TyVar(alpha) =>
+                  Ok(substCompose(Subst.empty->Map.Int.set(alpha, extendedStructTy), sig1))
+                | _ => unify(lhsTy, extendedStructTy)->map(sig2 => substCompose(sig2, sig1))
                 }
               }
             }
           }
-        | _ => {
-            open StructMatching
+        }
+      | _ => {
+          open StructMatching
 
-            // try inferring that this type is a struct
-            let a = Context.freshTyVarIndex()
-            let partialAttrs =
-              Attributes.make(TyVar(a))->Attributes.insert(attr, substMono(sig1, tau))
-            let partialStruct = substMono(sig1, Types.TyStruct(Types.PartialStruct(partialAttrs)))
-            switch findMatchingStruct(partialAttrs) {
-            | OneMatch(matchingStruct) =>
-              unify(sig1LhsTy, TyStruct(NamedStruct(matchingStruct.name)))->flatMap(sig2 => {
-                reCheck(substCompose(sig2, sig1))
-              })
-            | MultipleMatches(_) =>
-              unify(sig1LhsTy, partialStruct)->flatMap(sig2 => {
-                reCheck(substCompose(sig2, sig1))
-              })
-            | NoMatch =>
-              Error(`no struct declaration matches type ${Types.showMonoTy(partialStruct)}`)
-            }
+          // try inferring that this type is a struct
+          let a = Context.freshTyVarIndex()
+          let partialAttrs = Attributes.make(TyVar(a))->Attributes.insert(attr, tau)
+          let partialStruct = substMono(sig1, Types.TyStruct(Types.PartialStruct(partialAttrs)))
+          switch findMatchingStruct(partialAttrs) {
+          | OneMatch(matchingStruct) =>
+            unify(sig1LhsTy, TyStruct(NamedStruct(matchingStruct.name)))->flatMap(sig2 => {
+              reCheck(substCompose(sig2, sig1))
+            })
+          | MultipleMatches(_) =>
+            unify(sig1LhsTy, partialStruct)->flatMap(sig2 => {
+              reCheck(substCompose(sig2, sig1))
+            })
+          | NoMatch =>
+            Error(`no struct declaration matches type ${Types.showMonoTy(partialStruct)}`)
           }
         }
-      })
-    }
+      }
+    })
   }
 }
 

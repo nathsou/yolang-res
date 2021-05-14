@@ -15,6 +15,7 @@ module CompilerExn = {
   exception UndeclaredStruct(string)
   exception InvalidAttributeAccess(string, Types.monoTy)
   exception StructTypeNotMatched(Types.monoTy)
+  exception AmibguousStruct(Types.Attributes.t, array<Context.Struct.t>)
 
   let show = exn =>
     switch exn {
@@ -33,8 +34,9 @@ module CompilerExn = {
     | UndeclaredStruct(name) => `undeclared struct "${name}"`
     | InvalidAttributeAccess(attr, ty) =>
       `${attr} does not exist for type "${Types.showMonoTy(ty)}"`
-    | StructTypeNotMatched(ty) =>
-      `[compiler] No struct declaration matches type ${Types.showMonoTy(ty)}`
+    | StructTypeNotMatched(ty) => `No struct declaration matches type ${Types.showMonoTy(ty)}`
+    | AmibguousStruct(attrs, matches) =>
+      Inferencer.StructMatching.ambiguousMatchesError(attrs, matches)
     | _ => "unexpected compiler exception"
     }
 }
@@ -67,8 +69,7 @@ let getStructExn = (structTy: Types.structTy) => {
     switch attrs->findMatchingStruct {
     | OneMatch(s) => s
     | NoMatch => raise(CompilerExn.StructTypeNotMatched(Types.TyStruct(structTy)))
-    | MultipleMatches(matches) =>
-      raise(CompilerExn.Unimplemented(ambiguousMatchesError(attrs, matches)))
+    | MultipleMatches(matches) => raise(CompilerExn.AmibguousStruct(attrs, matches))
     }
   }
 }
