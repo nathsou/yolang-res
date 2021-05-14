@@ -1,7 +1,9 @@
 open Belt
+open FuncUtils
 
 type rec monoTy = TyVar(int) | TyConst(string, array<monoTy>) | TyStruct(structTy)
-and structTy = NamedStruct(string) | PartialStruct(Map.String.t<monoTy>)
+and structAttributes = StructTail(monoTy) | StructCons((string, monoTy), structAttributes)
+and structTy = NamedStruct(string) | PartialStruct(structAttributes)
 
 type polyTy = (array<int>, monoTy)
 
@@ -31,6 +33,72 @@ let tupleTy = tys => TyConst("Tuple", tys)
 
 let pointerTy = ty => TyConst("Ptr", [ty])
 
+module Attributes = {
+  type t = structAttributes
+
+  let make = tail => StructTail(tail)
+
+  // keep the attribute names sorted
+  let rec insert = (self: t, attr, ty) => {
+    switch self {
+    | StructTail(a) => StructCons((attr, ty), StructTail(a))
+    | StructCons((attr2, ty2), tail) =>
+      if attr < attr2 {
+        StructCons((attr, ty), StructCons((attr2, ty2), tail))
+      } else {
+        StructCons((attr2, ty2), tail->insert(attr, ty))
+      }
+    }
+  }
+
+  let rec tail = (self: t) =>
+    switch self {
+    | StructTail(a) => a
+    | StructCons(_, tl) => tail(tl)
+    }
+
+  let fromArray = (attrs: array<(string, monoTy)>, tail) => {
+    attrs->Array.reduce(make(TyVar(tail)), (acc, (attr, ty)) => acc->insert(attr, ty))
+  }
+
+  let toArray = (attrs: t) => {
+    let rec aux = (attrs, acc) =>
+      switch attrs {
+      | StructCons(attr, tail)
+      | StructTail(TyStruct(PartialStruct(StructCons(attr, tail)))) =>
+        aux(tail, list{attr, ...acc})
+      | StructTail(_) => acc
+      }
+
+    aux(attrs, list{})->List.toArray
+  }
+
+  let toMap = (attrs: t): Map.String.t<monoTy> => {
+    Map.String.fromArray(toArray(attrs))
+  }
+
+  let rec map = (attrs, f) => {
+    switch attrs {
+    | StructTail(a) =>
+      switch f(a) {
+      | TyStruct(PartialStruct(t)) => t
+      | t => StructTail(t)
+      }
+    | StructCons((attr, ty), tail) => StructCons((attr, f(ty)), map(tail, f))
+    }
+  }
+
+  let show = (attrs: t, showMonoTy) => {
+    let rec aux = (attr, acc) =>
+      switch attr {
+      | StructTail(a) => list{"..." ++ showMonoTy(a), ...acc}->List.toArray->Array.reverse
+      | StructCons((attr, ty), tail) => aux(tail, list{attr ++ ": " ++ showMonoTy(ty), ...acc})
+      }
+
+    "{ " ++ aux(attrs, list{})->Array.joinWith(", ", x => x) ++ " }"
+  }
+}
+
 let rec freeTyVarsMonoTy = (ty: monoTy) => {
   open Set.Int
   switch ty {
@@ -40,7 +108,10 @@ let rec freeTyVarsMonoTy = (ty: monoTy) => {
     switch structTy {
     | NamedStruct(_) => empty
     | PartialStruct(attrs) =>
-      attrs->Map.String.valuesToArray->Array.map(freeTyVarsMonoTy)->Array.reduce(empty, union)
+      attrs
+      ->Attributes.toArray
+      ->Array.map(snd->compose(freeTyVarsMonoTy))
+      ->Array.reduce(empty, union)
     }
   }
 }
@@ -96,11 +167,7 @@ let rec showMonoTy = ty =>
   | TyStruct(structTy) =>
     switch structTy {
     | NamedStruct(name) => name
-    | PartialStruct(attrs) =>
-      "{ " ++
-      attrs
-      ->Map.String.toArray
-      ->Array.joinWith(", ", ((attr, ty)) => attr ++ ": " ++ ty->showMonoTy) ++ " }"
+    | PartialStruct(attrs) => attrs->Attributes.show(showMonoTy)
     }
   }
 

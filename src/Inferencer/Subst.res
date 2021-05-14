@@ -17,7 +17,7 @@ let rec substMono = (s: t, ty: monoTy): monoTy =>
     TyStruct(
       switch structTy {
       | NamedStruct(name) => NamedStruct(name)
-      | PartialStruct(attrs) => PartialStruct(attrs->Map.String.map(substMono(s)))
+      | PartialStruct(attrs) => PartialStruct(attrs->Attributes.map(substMono(s)))
       },
     )
   }

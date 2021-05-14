@@ -23,12 +23,10 @@ module Struct = {
     ) ++ "\n}"
   }
 
-  let toPartialStructType = ({attributes}: t) => {
+  let toPartialStructType = ({attributes}: t, tail: int) => {
     Types.TyStruct(
       Types.PartialStruct(
-        attributes->Array.reduce(Map.String.empty, (acc, {name, ty}) => {
-          acc->Map.String.set(name, ty)
-        }),
+        attributes->Array.map(({name, ty}) => (name, ty))->Types.Attributes.fromArray(tail),
       ),
     )
   }
@@ -85,10 +83,14 @@ let make = (): t => {
 // global context
 let context = make()
 
-let freshTyVar = () => {
-  let res = Types.TyVar(context.tyVarIndex)
+let freshTyVarIndex = () => {
+  let res = context.tyVarIndex
   context.tyVarIndex = context.tyVarIndex + 1
   res
+}
+
+let freshTyVar = () => {
+  Types.TyVar(freshTyVarIndex())
 }
 
 /**

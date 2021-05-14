@@ -8,7 +8,7 @@ let rec occurs = (x, ty) =>
   | TyStruct(structTy) =>
     switch structTy {
     | NamedStruct(_) => false
-    | PartialStruct(attrs) => attrs->Map.String.some((_, ty) => x->occurs(ty))
+    | PartialStruct(attrs) => attrs->Attributes.toArray->Array.some(((_, ty)) => x->occurs(ty))
     }
   }
 
@@ -30,44 +30,72 @@ let bindVar = (x, ty, subst): result<Subst.t, string> => {
 
 let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
   open Array
+
   switch eqs {
   | list{} => Ok(subst)
   | list{(s, t), ...eqs} =>
     switch (s, t) {
     | (TyConst(f, fArgs), TyConst(g, gArgs)) if f == g && fArgs->length == gArgs->length => {
-        let newEqs = zip(fArgs, gArgs)->reduce(eqs, (acc, (a, b)) => list{(a, b), ...acc})
+        let newEqs =
+          zip(fArgs, gArgs)->reduce(eqs, (acc, (a, b)) => list{
+            (Subst.substMono(subst, a), Subst.substMono(subst, b)),
+            ...acc,
+          })
         unifyMany(newEqs, subst)
       }
     | (TyStruct(a), TyStruct(b)) =>
       switch (a, b) {
       | (NamedStruct(a), NamedStruct(b)) if a == b => unifyMany(eqs, subst)
-      | (PartialStruct(attrsA), PartialStruct(attrsB)) =>
-        attrsA
-        ->Map.String.toArray
-        ->Array.map(((attr, tyA)) => {
-          switch attrsB->Map.String.get(attr) {
-          | Some(tyB) => Ok((tyA, tyB))
-          | None =>
-            Error(
-              `struct type ${showMonoTy(t)} is missing attribute "${attr}" from type "${showMonoTy(
-                  s,
-                )}"`,
+      | (PartialStruct(attrsA), PartialStruct(attrsB)) => {
+          let attrsBMap = attrsB->Attributes.toMap
+          let attrsAArray = attrsA->Attributes.toArray
+
+          attrsAArray
+          ->Array.map(((attr, tyA)) => {
+            switch attrsBMap->Map.String.get(attr) {
+            | Some(tyB) => Ok((tyA, tyB))
+            | None =>
+              Error(
+                `struct type ${showMonoTy(
+                    t,
+                  )} is missing attribute "${attr}" from type "${showMonoTy(s)}"`,
+              )
+            }
+          })
+          ->ArrayUtils.mapResult(x => x)
+          ->Result.flatMap(newEqs => {
+            let missingAttrs = TyStruct(
+              PartialStruct(
+                attrsBMap
+                ->Map.String.removeMany(attrsAArray->Array.map(fst))
+                ->Map.String.toArray
+                ->Attributes.fromArray(Context.freshTyVarIndex()),
+              ),
             )
-          }
-        })
-        ->ArrayUtils.mapResult(x => x)
-        ->Result.flatMap(newEqs => {
-          unifyMany(newEqs->List.fromArray->List.concat(eqs), subst)
-        })
+
+            unifyMany(
+              newEqs
+              ->List.fromArray
+              ->List.concat(list{(attrsA->Attributes.tail, missingAttrs), ...eqs}),
+              subst,
+            )
+          })
+        }
       | (NamedStruct(a), PartialStruct(attrs)) =>
         switch Context.getStruct(a) {
         | Some(s) =>
           switch unifyMany(
-            list{(TyStruct(PartialStruct(attrs)), s->Context.Struct.toPartialStructType), ...eqs},
+            list{
+              (
+                TyStruct(PartialStruct(attrs)),
+                s->Context.Struct.toPartialStructType(Context.freshTyVarIndex()),
+              ),
+              ...eqs,
+            },
             subst,
           ) {
           | Ok(subst) => Ok(subst)
-          | Error(_) => Error(`struct type ${showMonoTy(t)} does not match ${a}`)
+          | Error(err) => Error(`struct type ${showMonoTy(t)} does not match ${a}: ${err}`)
           }
         | None => Error(`undeclared struct "${a}"`)
         }
@@ -77,13 +105,16 @@ let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
         | Some(struct) =>
           switch unifyMany(
             list{
-              (TyStruct(PartialStruct(attrs)), struct->Context.Struct.toPartialStructType),
+              (
+                TyStruct(PartialStruct(attrs)),
+                struct->Context.Struct.toPartialStructType(Context.freshTyVarIndex()),
+              ),
               ...eqs,
             },
             subst,
           ) {
           | Ok(subst) => Ok(subst)
-          | Error(_) => Error(`struct type ${showMonoTy(s)} does not match ${b}`)
+          | Error(err) => Error(`struct type ${showMonoTy(s)} does not match ${b}: ${err}`)
           }
         | None => Error(`undeclared struct "${b}"`)
         }
