@@ -73,7 +73,8 @@ module Ast = {
     | StructExpr(string, array<(string, expr)>)
     | AttributeAccessExpr(expr, string)
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
-  and decl =
+
+  type decl =
     | FuncDecl(string, array<string>, expr)
     | GlobalDecl(string, bool, expr)
     | StructDecl(string, array<(string, Types.monoTy)>)

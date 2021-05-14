@@ -5,7 +5,8 @@
     "build": "rescript build",
     "clean": "rescript clean",
     "start": "rescript build -w",
-    "format": "rescript format"
+    "format": "rescript format",
+    "clear": "rm src/**/**.bs.js && rm src/**/**.gen.tsx"
   },
   "keywords": [
     "rescript"
@@ -16,6 +17,7 @@
     "binaryen": "^101.0.0"
   },
   "devDependencies": {
+    "gentype": "^3.50.0",
     "rescript": "^9.1.2"
   }
 }

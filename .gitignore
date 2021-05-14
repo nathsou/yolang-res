@@ -4,5 +4,6 @@
 .bsb.lock
 .merlin
 **/**.bs.js
+**/**.gen.tsx
 **/**.wasm
 **/**.wat

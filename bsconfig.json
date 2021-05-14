@@ -6,12 +6,24 @@
     "subdirs": true
   },
   "package-specs": {
-    "module": "commonjs",
-    "in-source": false
+    "module": "es6",
+    "in-source": true
   },
   "suffix": ".bs.js",
   "bs-dependencies": [],
   "warnings": {
     "error": "+101"
+  },
+  "gentypeconfig": {
+    "language": "typescript",
+    "module": "es6",
+    "shims": {
+      "Js": "Js"
+    },
+    "in-source": true,
+    "debug": {
+      "all": false,
+      "basic": false
+    }
   }
 }

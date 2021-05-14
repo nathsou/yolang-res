@@ -1,8 +1,10 @@
 open Belt
 
+@genType
 type byte = int
 
 // https://www.wikiwand.com/en/LEB128
+@genType
 let uleb128 = (n: int): array<byte> => {
   let bytes = []
 
@@ -22,6 +24,7 @@ let uleb128 = (n: int): array<byte> => {
   bytes
 }
 
+@genType
 let sleb128 = (val: int): array<byte> => {
   let bytes = []
 
@@ -42,15 +45,22 @@ let sleb128 = (val: int): array<byte> => {
 }
 
 module Vec = {
+  @genType
   type t = array<byte>
+
+  @genType
   let encode = (vec: t) => Array.concat(uleb128(vec->Array.length), vec)
+
+  @genType
   let encodeMany = (vecs: array<t>): t =>
     Array.concat(uleb128(vecs->Array.length), Array.concatMany(vecs))
 }
 
 module F32 = {
+  @genType
   type t = float
 
+  @genType
   let encode = (x: t): Vec.t => {
     open Js.Typed_array
     let view = DataView.fromBuffer(ArrayBuffer.make(4))
@@ -66,8 +76,10 @@ module F32 = {
 }
 
 module F64 = {
+  @genType
   type t = float
 
+  @genType
   let encode = (x: t): Vec.t => {
     open Js.Typed_array
     let view = DataView.fromBuffer(ArrayBuffer.make(8))
@@ -87,6 +99,7 @@ module F64 = {
 }
 
 module Section = {
+  @genType
   type t =
     | Custom
     | Type
@@ -101,6 +114,7 @@ module Section = {
     | Code
     | Data
 
+  @genType
   let id = (section: t) =>
     switch section {
     | Custom => 0
@@ -117,10 +131,12 @@ module Section = {
     | Data => 11
     }
 
+  @genType
   let encode = (section, bytes): Vec.t => Array.concat([section->id], Vec.encode(bytes))
 
+  @genType
   let show = sec =>
-    `\x1b[33m[${switch sec {
+    `[${switch sec {
       | Custom => "custom"
       | Type => "type"
       | Import => "import"
@@ -133,12 +149,14 @@ module Section = {
       | Element => "element"
       | Code => "code"
       | Data => "data"
-      }}]\x1b[0m`
+      }}]`
 }
 
 module ValueType = {
+  @genType
   type t = I32 | I64 | F32 | F64
 
+  @genType
   let encode = (v: t): byte =>
     switch v {
     | I32 => 0x7f
@@ -147,6 +165,7 @@ module ValueType = {
     | F64 => 0x7c
     }
 
+  @genType
   let show = v =>
     switch v {
     | I32 => "i32"
@@ -157,8 +176,10 @@ module ValueType = {
 }
 
 module BlockReturnType = {
+  @genType
   type t = TypeValue(ValueType.t) | TypeIndex(int, (array<ValueType.t>, array<ValueType.t>)) | Void
 
+  @genType
   let encode = (v: t): array<byte> =>
     switch v {
     | TypeValue(t) => [t->ValueType.encode]
@@ -166,6 +187,7 @@ module BlockReturnType = {
     | Void => [0x40]
     }
 
+  @genType
   let show = v =>
     switch v {
     | TypeValue(t) => t->ValueType.show
@@ -175,10 +197,11 @@ module BlockReturnType = {
 }
 
 // https://github.com/sunfishcode/wasm-reference-manual/blob/master/WebAssembly.md#memflags-immediate-type
-type alignmentHint = int
-type addrOffset = int
+@genType type alignmentHint = int
+@genType type addrOffset = int
 
 module Inst = {
+  @genType
   type t =
     | ConstI32(int)
     | ConstI64(int)
@@ -244,6 +267,7 @@ module Inst = {
     | RemI32Unsigned
     | And
 
+  @genType
   let info = inst =>
     switch inst {
     | ConstI32(n) => (0x41, `i32.const ${Int.toString(n)}`)
@@ -320,11 +344,13 @@ module Inst = {
     | And => (0x71, "i32.and")
     }
 
+  @genType
   let opcode = inst => {
     let (opcode, _) = inst->info
     opcode
   }
 
+  @genType
   let identationDelta = inst =>
     switch inst {
     | If(_) => 1
@@ -335,6 +361,7 @@ module Inst = {
     | _ => 0
     }
 
+  @genType
   let show = (
     ~indentation=ref(0),
     inst,
@@ -361,6 +388,7 @@ module Inst = {
     ident ++ fmt ++ " " ++ details
   }
 
+  @genType
   let encode = inst =>
     switch inst {
     | ConstI32(n) => Array.concat([inst->opcode], sleb128(n))
@@ -382,18 +410,25 @@ module Inst = {
 
 module Func = {
   module Signature = {
+    @genType
     type t = FuncSig(array<ValueType.t>, array<ValueType.t>)
+
+    @genType
     type index = int
 
     // http://webassembly.github.io/spec/core/binary/types.html#function-types
+    @genType
     let funcTypeCode = 0x60
 
+    @genType
     let make = (params, rets) => {
       FuncSig(params, rets)
     }
 
+    @genType
     let empty = make([], [])
 
+    @genType
     let encode = (FuncSig(params, ret)): Vec.t => {
       Array.concatMany([
         [funcTypeCode],
@@ -402,6 +437,7 @@ module Func = {
       ])
     }
 
+    @genType
     let show = (FuncSig(args, rets)) => {
       let argsFmt = args->Array.joinWith(", ", ValueType.show)
       let retsFmt = rets->Array.joinWith(", ", ValueType.show)
@@ -416,11 +452,14 @@ module Func = {
   }
 
   module Local = {
+    @genType
     type t = (array<string>, ValueType.t)
 
+    @genType
     type index = int
 
     // run-length sequence of types
+    @genType
     let fromTypes = (locals: array<(string, ValueType.t)>): array<t> => {
       let rec aux = (types, acc) => {
         switch (types, acc) {
@@ -439,20 +478,25 @@ module Func = {
       locals->List.map(((names, ty)) => (names->List.toArray->Array.reverse, ty))->List.toArray
     }
 
+    @genType
     let encode = ((names, typ): t): Vec.t => {
       Array.concat(uleb128(names->Array.length), [ValueType.encode(typ)])
     }
 
+    @genType
     let show = ((names, ty): t) => {
       `local [${names->Array.joinWith(", ", x => x)}] ${ValueType.show(ty)}`
     }
   }
 
   module Body = {
+    @genType
     type t = (array<Local.t>, array<Inst.t>)
 
+    @genType
     let make = (locals, instructions): t => (locals, instructions)
 
+    @genType
     let encode = ((locals, instructions): t): Vec.t => {
       let locals = Vec.encodeMany(locals->Array.map(Local.encode))
       let instructions = Array.concatMany(instructions->Array.map(Inst.encode))
@@ -460,6 +504,7 @@ module Func = {
       Array.concatMany([[locals->Array.length + instructions->Array.length], locals, instructions])
     }
 
+    @genType
     let show = ((locals, insts): t, funcNames: array<string>, FuncSig(params, _): Signature.t) => {
       let indentation = ref(1)
 
@@ -482,18 +527,25 @@ module Func = {
     }
   }
 
+  @genType
   type t = (string, Signature.t, Body.t)
+
+  @genType
   type index = int
 
+  @genType
   let make = (name, signature, body): t => (name, signature, body)
 }
 
 module TypeSection = {
   // The Type Section consists of an list of function signatures.
+  @genType
   type t = array<Func.Signature.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let getOrAdd = (self: t, signature: Func.Signature.t): Func.Signature.index => {
     switch self->Array.getIndexBy(sig => sig == signature) {
     | Some(idx) => idx
@@ -504,10 +556,12 @@ module TypeSection = {
     }
   }
 
+  @genType
   let encode = (self: t): Vec.t => {
     Section.encode(Section.Type, Vec.encodeMany(self->Array.map(Func.Signature.encode)))
   }
 
+  @genType
   let show = (self: t) => {
     Section.show(Section.Type) ++ "\n" ++ self->Array.joinWith("\n", Func.Signature.show)
   }
@@ -519,19 +573,24 @@ module FuncSection = {
 
   // A function declaration consists of:
   // an index in the Type Section of the signature of the function.
+  @genType
   type t = array<Func.Signature.index>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let addSignature = (self: t, signatureIndex: Func.Signature.index) => {
     let _ = self->Js.Array2.push(signatureIndex)
     self->Array.length - 1
   }
 
+  @genType
   let encode = (self: t) => {
     Section.encode(Section.Function, Vec.encodeMany(self->Array.map(uleb128)))
   }
 
+  @genType
   let show = (self: t, funcNames: array<string>) => {
     Section.show(Section.Function) ++
     "\n" ++
@@ -542,19 +601,24 @@ module FuncSection = {
 }
 
 module CodeSection = {
+  @genType
   type t = array<Func.Body.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let addFunc = (self: t, f): Func.index => {
     let _ = self->Js.Array2.push(f)
     self->Array.length - 1
   }
 
+  @genType
   let encode = (bodies: t): Vec.t => {
     Section.encode(Section.Code, Vec.encodeMany(bodies->Array.map(Func.Body.encode)))
   }
 
+  @genType
   let show = (self: t, funcs: array<Func.t>) => {
     let funcNames = funcs->Array.map(((name, _, _)) => name)
 
@@ -563,12 +627,13 @@ module CodeSection = {
     self
     ->Array.zip(funcs)
     ->Array.joinWith("\n\n", ((b, (name, sig, _))) => {
-      `\x1b[36m${name}\x1b[0m:\n` ++ b->Func.Body.show(funcNames, sig)
+      `${name}\n` ++ b->Func.Body.show(funcNames, sig)
     })
   }
 }
 
-module String = {
+module Str = {
+  @genType
   let encode = (str: string): Vec.t => {
     Vec.encode(Js.String.split("", str)->Array.map(c => Int.fromFloat(Js.String.charCodeAt(0, c))))
   }
@@ -576,8 +641,10 @@ module String = {
 
 module ExportEntry = {
   module ExternalKind = {
+    @genType
     type t = Func | Table | Memory | Global
 
+    @genType
     let encode = (kind: t): Vec.t => [
       switch kind {
       | Func => 0
@@ -587,6 +654,7 @@ module ExportEntry = {
       },
     ]
 
+    @genType
     let show = kind =>
       switch kind {
       | Func => "func"
@@ -596,50 +664,62 @@ module ExportEntry = {
       }
   }
 
+  @genType
   type t = {
     name: string,
     kind: ExternalKind.t,
     index: int,
   }
 
+  @genType
   let make = (name, kind, index): t => {name: name, kind: kind, index: index}
 
+  @genType
   let encode = ({name, kind, index}: t): Vec.t => {
-    Array.concatMany([name->String.encode, kind->ExternalKind.encode, uleb128(index)])
+    Array.concatMany([name->Str.encode, kind->ExternalKind.encode, uleb128(index)])
   }
 
+  @genType
   let show = ({name, kind, index}: t) => {
     `export ${ExternalKind.show(kind)} ${name} (index: ${Int.toString(index)})`
   }
 }
 
 module ExportSection = {
+  @genType
   type t = array<ExportEntry.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let add = (self: t, exp: ExportEntry.t): unit => {
     let _ = self->Js.Array2.push(exp)
   }
 
+  @genType
   let encode = (self: t): Vec.t => {
     Section.encode(Section.Export, Vec.encodeMany(self->Array.map(ExportEntry.encode)))
   }
 
+  @genType
   let show = (self: t) => {
     Section.show(Section.Export) ++ "\n" ++ self->Array.joinWith("\n", ExportEntry.show)
   }
 }
 
 module ReferenceType = {
+  @genType
   type t = FuncRef | ExternRef
 
+  @genType
   let show = ref =>
     switch ref {
     | FuncRef => "funcref"
     | ExternRef => "externref"
     }
 
+  @genType
   let encode = ref =>
     switch ref {
     | FuncRef => 0x70
@@ -648,15 +728,21 @@ module ReferenceType = {
 }
 
 module Limits = {
+  @genType
   type t = (int, option<int>)
 
+  @genType
   let show = ((min, max): t) => {
     `{ min: ${Int.toString(min)}, max: ${max->Option.mapWithDefault("?", Int.toString)} }`
   }
 
+  @genType
   let make = (min: int, max: option<int>): t => (min, max)
+
+  @genType
   let makeExact = (count: int): t => (count, Some(count))
 
+  @genType
   let encode = ((min, max): t): Vec.t => {
     switch max {
     | Some(max) => Array.concatMany([[0x01], uleb128(min), uleb128(max)])
@@ -666,58 +752,73 @@ module Limits = {
 }
 
 module Table = {
+  @genType
   type index = int
 
+  @genType
   type t = (ReferenceType.t, Limits.t)
 
+  @genType
   let make = (refType: ReferenceType.t, limits: Limits.t): t => {
     (refType, limits)
   }
 
+  @genType
   let encode = ((refTy, limits): t) => {
     Array.concat([refTy->ReferenceType.encode], limits->Limits.encode)
   }
 
+  @genType
   let show = ((refTy, limits): t) => {
     `table ${refTy->ReferenceType.show} ${limits->Limits.show}`
   }
 }
 
 module TableSection = {
+  @genType
   type t = array<Table.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let add = (self: t, table: Table.t): unit => {
     let _ = self->Js.Array2.push(table)
   }
 
+  @genType
   let show = tables => {
     Section.show(Section.Table) ++ "\n" ++ tables->Array.joinWith("\n", Table.show)
   }
 
+  @genType
   let encode = tables => {
     Section.encode(Section.Table, Vec.encodeMany(tables->Array.map(Table.encode)))
   }
 }
 
 // https://webassembly.github.io/spec/core/binary/modules.html#element-section
-module Element = {
+// Element conficts the JS type
+module Elem = {
+  @genType
   type t = {
     offset: int,
     funcIndices: array<Func.index>,
   }
 
+  @genType
   let fromFuncRefs = (~offset=0, funcIndices: array<Func.index>): t => {
     offset: offset,
     funcIndices: funcIndices,
   }
 
+  @genType
   let show = ({offset, funcIndices}: t) =>
     `elem funcref (${funcIndices->Array.joinWith(" ", Int.toString)}) (offset=${Int.toString(
         offset,
       )})`
 
+  @genType
   let encode = ({offset, funcIndices}: t): Vec.t => {
     Array.concatMany([
       [0x00],
@@ -729,27 +830,34 @@ module Element = {
 }
 
 module ElementSection = {
-  type t = array<Element.t>
+  @genType
+  type t = array<Elem.t>
 
+  @genType
   let make = (): t => []
 
-  let add = (self: t, elem: Element.t): unit => {
+  @genType
+  let add = (self: t, elem: Elem.t): unit => {
     let _ = self->Js.Array2.push(elem)
   }
 
+  @genType
   let show = elems => {
-    Section.show(Section.Element) ++ "\n" ++ elems->Array.joinWith("\n", Element.show)
+    Section.show(Section.Element) ++ "\n" ++ elems->Array.joinWith("\n", Elem.show)
   }
 
+  @genType
   let encode = elems => {
-    Section.encode(Section.Element, Vec.encodeMany(elems->Array.map(Element.encode)))
+    Section.encode(Section.Element, Vec.encodeMany(elems->Array.map(Elem.encode)))
   }
 }
 
 module Global = {
   module Initializer = {
+    @genType
     type t = InitConstI32(int) | InitGetGlobal(int)
 
+    @genType
     let encode = (init: t): Vec.t =>
       Array.concat(
         Inst.encode(
@@ -761,6 +869,7 @@ module Global = {
         Inst.encode(Inst.End),
       )
 
+    @genType
     let show = init =>
       switch init {
       | InitConstI32(n) => Int.toString(n)
@@ -768,11 +877,16 @@ module Global = {
       }
   }
 
+  @genType
   type t = (ValueType.t, bool, Initializer.t)
+
+  @genType
   type index = int
 
+  @genType
   let make = (~isMutable, ty, init): t => (ty, isMutable, init)
 
+  @genType
   let show = ((ty, mut, init): t) => {
     `global ${mut ? "mutable" : "immutable"} ` ++
     ty->ValueType.show ++
@@ -780,58 +894,77 @@ module Global = {
     init->Initializer.show
   }
 
+  @genType
   let encode = ((ty, mut, init): t): Vec.t => {
     Array.concat([ty->ValueType.encode, mut ? 0x1 : 0x0], init->Initializer.encode)
   }
 }
 
 module GlobalSection = {
+  @genType
   type t = array<Global.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let add = (self: t, global: Global.t): unit => {
     let _ = self->Js.Array2.push(global)
   }
 
+  @genType
   let show = (globals: t) => {
     Section.show(Section.Global) ++ "\n" ++ globals->Array.joinWith("\n", Global.show)
   }
 
+  @genType
   let encode = (globals: t): Vec.t => {
     Section.encode(Section.Global, Vec.encodeMany(globals->Array.map(Global.encode)))
   }
 }
 
 module Memory = {
+  @genType
   type t = Limits.t
+  @genType
   type index = int
 
+  @genType
   let make = (limits: Limits.t): t => limits
+
+  @genType
   let show = (mem: t) => "memory " ++ mem->Limits.show
+
+  @genType
   let encode = Limits.encode
 }
 
 module MemorySection = {
+  @genType
   type t = array<Memory.t>
 
+  @genType
   let make = (): t => []
 
+  @genType
   let add = (self: t, mem: Memory.t): Memory.index => {
     let index = self->Js.Array2.push(mem) - 1
     index
   }
 
+  @genType
   let show = (mems: t) => {
     Section.show(Section.Memory) ++ "\n" ++ mems->Array.joinWith("\n", Memory.show)
   }
 
+  @genType
   let encode = (mems: t): Vec.t => {
     Section.encode(Section.Memory, Vec.encodeMany(mems->Array.map(Memory.encode)))
   }
 }
 
 module Module = {
+  @genType
   type t = {
     typeSection: TypeSection.t,
     funcSection: FuncSection.t,
@@ -845,6 +978,7 @@ module Module = {
     importsCount: int,
   }
 
+  @genType
   let make = (): t => {
     typeSection: TypeSection.make(),
     funcSection: FuncSection.make(),
@@ -858,10 +992,12 @@ module Module = {
     importsCount: 0,
   }
 
+  @genType
   let getOrAddSignature = (self: t, sig: Func.Signature.t): Func.Signature.index => {
     self.typeSection->TypeSection.getOrAdd(sig)
   }
 
+  @genType
   let addFunc = (self: t, name, sig: Func.Signature.t, body: Func.Body.t): Func.index => {
     let sigIndex = self->getOrAddSignature(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
@@ -869,6 +1005,7 @@ module Module = {
     self.codeSection->CodeSection.addFunc(body) + self.importsCount
   }
 
+  @genType
   let addExportedFunc = (
     self: t,
     name: string,
@@ -883,22 +1020,27 @@ module Module = {
     funcIndex
   }
 
+  @genType
   let addTable = (self: t, table: Table.t): unit => {
     self.tableSection->TableSection.add(table)
   }
 
-  let addElement = (self: t, elem: Element.t): unit => {
+  @genType
+  let addElement = (self: t, elem: Elem.t): unit => {
     self.elementSection->ElementSection.add(elem)
   }
 
+  @genType
   let addGlobal = (self: t, global: Global.t): unit => {
     self.globalSection->GlobalSection.add(global)
   }
 
+  @genType
   let addMemory = (self: t, mem: Memory.t): Memory.index => {
     self.memorySection->MemorySection.add(mem)
   }
 
+  @genType
   let encode = (self: t): Vec.t => {
     Array.concatMany([
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
@@ -913,10 +1055,12 @@ module Module = {
     ])
   }
 
+  @genType
   let encodeAsUint8Array = (self: t): Js.Typed_array.Uint8Array.t => {
     %raw(`(bytes => Uint8Array.from(bytes))`)(self->encode)
   }
 
+  @genType
   let show = (self: t) => {
     [
       self.typeSection->TypeSection.show,

@@ -61,57 +61,42 @@ let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
   )
 }
 
-let compile = (input: string, opt: bool) => {
-  Parser.parse(input)->Result.flatMap(prog => {
-    let coreProg = prog->Array.map(Core.CoreDecl.from)
-
-    Inferencer.infer(coreProg)->Result.flatMap(((_, subst)) => {
-      Context.substIdentifiers(subst)
-      let core = coreProg->Array.map(Core.CoreDecl.subst(subst))
-
-      Compiler.compile(core)->Result.map(mod => {
-        let bytes = mod->Wasm.Module.encodeAsUint8Array
-        let bytes = opt ? bytes->optimize : bytes
-
-        (mod, bytes)
-      })
-    })
-  })
-}
-
 let run = (input, output, opt): unit => {
-  switch input->compile(opt) {
-  | Ok((_, bytes)) =>
-    switch output {
-    | Some(outFile) => bytes->writeModule(outFile)
-    | None => bytes->runModule
+  switch input->Lib.compile {
+  | Ok((_, bytes)) => {
+      let bytes = opt ? optimize(bytes) : bytes
+
+      switch output {
+      | Some(outFile) => bytes->writeModule(outFile)
+      | None => bytes->runModule
+      }
     }
   | Error(err) => Js.Console.error(err)
   }
 }
 
-switch Node.Process.argv {
-| [_, _, "exec", path] => runModule(readModule(path))
-| [_, _, path, "-O2"] => {
+switch Node.Process.argv->Array.sliceToEnd(2) {
+| ["exec", path] => runModule(readModule(path))
+| [path, "-O2"] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, None, true)
   }
-| [_, _, path, "--print"] => {
+| [path, "--print"] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
-    switch prog->compile(false) {
+    switch prog->Lib.compile {
     | Ok((mod, _)) => Js.log(mod->Wasm.Module.show)
     | Error(err) => Js.Console.error(err)
     }
   }
-| [_, _, path] => {
+| [path] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, None, false)
   }
-| [_, _, path, out, "-O2"] => {
+| [path, out, "-O2"] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, Some(out), true)
   }
-| [_, _, path, out] => {
+| [path, out] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, Some(out), false)
   }

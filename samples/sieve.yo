@@ -55,5 +55,5 @@ fn countPrimesLessThan(m) {
 }
 
 fn main() {
-  countPrimesLessThan(10000000)
+  countPrimesLessThan(1000000)
 }
