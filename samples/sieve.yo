@@ -22,40 +22,68 @@ impl Array {
   }
 }
 
-fn checkPrimeSieve(primes, n) {
-  mut i = 0;
-  mut p = primes.read(i);
-
-  while p * p <= n {
-    if n % p == 0 { return; }
-    i = i + 1;
-    p = primes.read(i);
-  }
-
-  // add this prime to the sieve
-  primes.push(n);
+struct Sieve {
+  primes: Array,
+  current: u32
 }
 
-fn countPrimesLessThan(m) {
-  mut primes = Array {
-    // right after the shadow stack
-    start: 65536 as Ptr<u32>,
-    length: 0,
-    capacity: 100000
-  };
-
-  // 2 is the first prime
-  primes.push(2);
-
-  mut i = 3;
-  while i <= m {
-    checkPrimeSieve(primes, i);
-    i = i + 2;
+impl Sieve {
+  fn clear(self) {
+    self.primes.length = 0;
+    // 2 is the first prime
+    self.primes.push(2);
+    self.current = 1;
   }
 
-  primes.length
+  fn isPrime(self, n) {
+    mut i = 0;
+    mut p = self.primes.read(i);
+
+    while p * p <= n {
+      if n % p == 0 { return false; }
+      i = i + 1;
+      p = self.primes.read(i);
+    }
+
+    // n is prime
+    // add it to the sieve
+    self.primes.push(n);
+
+    true
+  }
+
+  fn nextPrime(self) {
+    self.current = self.current + 2;
+
+    while !self.isPrime(self.current) {
+      self.current = self.current + 2;
+    }
+
+    self.current
+  }
+
+  // count the prime numbers <= m
+  fn countUpTo(self, m) {
+    self.clear();
+
+    while self.current <= m {
+      self.nextPrime();
+    }
+
+    self.primes.length - 1
+  }
 }
 
 fn main() {
-  countPrimesLessThan(1000000)
+  mut sieve = Sieve {
+    primes: Array {
+      // right after the shadow stack
+      start: 65536 as Ptr<u32>,
+      length: 0,
+      capacity: 100000
+    },
+    current: 0
+  };
+
+  sieve.countUpTo(1000000)
 }

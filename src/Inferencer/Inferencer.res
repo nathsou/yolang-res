@@ -144,11 +144,12 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   | CoreConstExpr(c) =>
     let tau' = Context.freshInstance(constTy(c))
     unify(expr->CoreExpr.typeOf, tau')
-  | CoreVarExpr(x) =>
-    let x = x.contents
-    switch env->Env.get(x.name) {
-    | Some(ty) => unify(x.ty, Context.freshInstance(ty))
-    | None => Error(`unbound variable: "${x.name}"`)
+  | CoreVarExpr(x) => {
+      let x = x.contents
+      switch env->Env.get(x.name) {
+      | Some(ty) => unify(x.ty, Context.freshInstance(ty))
+      | None => Error(`unbound variable: "${x.name}"`)
+      }
     }
   | CoreAssignmentExpr(lhs, rhs) => {
       let tau1 = lhs->CoreAst.typeOfExpr
@@ -501,7 +502,10 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
           )) => {
             let sig'' = substCompose(sig', sig)
             Context.substNameRef(sig'', f)
-            Ok((gamma', sig''))
+
+            // f is not visible in the global scope
+            let gamma'' = gamma'->Env.remove(f.contents.name)
+            Ok((gamma'', sig''))
           })
         })
       })
