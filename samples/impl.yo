@@ -1,0 +1,26 @@
+
+struct Array {
+  length: u32,
+  capacity: u32,
+}
+
+impl Array {
+  fn grow(self) {
+    self.capacity = if self.capacity == 0 {
+      1
+    } else {
+      self.capacity * 2
+    };
+  }
+}
+
+fn main() {
+  mut a = Array {
+    length: 0,
+    capacity: 8
+  };
+
+  a.grow();
+
+  a.capacity
+}

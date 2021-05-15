@@ -7,31 +7,33 @@ struct Array {
   capacity: u32,
 }
 
-fn read(array, n) unsafe {
-  *(((array.start as u32) + n * SIZEOF_U32) as Ptr<u32>)
-}
+impl Array {
+  fn read(self, n) unsafe {
+    *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>)
+  }
 
-fn write(array, n, val) unsafe {
-  *(((array.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
-}
+  fn write(self, n, val) unsafe {
+    *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
+  }
 
-fn push(array, val) unsafe {
-  write(array, array.length, val);
-  array.length = array.length + 1;
+  fn push(self, val) {
+    self.write(self.length, val);
+    self.length = self.length + 1;
+  }
 }
 
 fn checkPrimeSieve(primes, n) {
   mut i = 0;
-  mut p = read(primes, i);
+  mut p = primes.read(i);
 
   while p * p <= n {
     if n % p == 0 { return; }
     i = i + 1;
-    p = read(primes, i);
+    p = primes.read(i);
   }
 
   // add this prime to the sieve
-  push(primes, n);
+  primes.push(n);
 }
 
 fn countPrimesLessThan(m) {
@@ -43,7 +45,7 @@ fn countPrimesLessThan(m) {
   };
 
   // 2 is the first prime
-  push(primes, 2);
+  primes.push(2);
 
   mut i = 3;
   while i <= m {

@@ -51,7 +51,7 @@ module Symbol = {
 }
 
 module Keywords = {
-  type t = Let | Mut | In | If | Else | Fn | While | Return | As | Unsafe | Struct
+  type t = Let | Mut | In | If | Else | Fn | While | Return | As | Unsafe | Struct | Impl
 
   let show = kw =>
     switch kw {
@@ -66,6 +66,7 @@ module Keywords = {
     | As => "as"
     | Unsafe => "unsafe"
     | Struct => "struct"
+    | Impl => "impl"
     }
 }
 

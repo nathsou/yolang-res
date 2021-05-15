@@ -34,6 +34,7 @@ let peephole = (insts: array<Wasm.Inst.t>) => {
       aux(list{ConstI32(a == b ? 1 : 0), ...tl}, acc)
     | list{ConstI32(a), ConstI32(b), NeI32, ...tl} =>
       aux(list{ConstI32(a == b ? 0 : 1), ...tl}, acc)
+    | list{ConstI32(funcIdx), CallIndirect(_, _), ...tl} => aux(list{Call(funcIdx), ...tl}, acc)
     | list{h, ...tl} => aux(tl, list{h, ...acc})
     | list{} => acc->List.toArray->Array.reverse
     }

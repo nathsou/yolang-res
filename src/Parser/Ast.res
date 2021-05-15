@@ -74,10 +74,11 @@ module Ast = {
     | AttributeAccessExpr(expr, string)
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
 
-  type decl =
+  type rec decl =
     | FuncDecl(string, array<string>, expr)
     | GlobalDecl(string, bool, expr)
     | StructDecl(string, array<(string, Types.monoTy)>)
+    | ImplDecl(string, array<decl>)
 
   let rec showExpr = expr =>
     switch expr {
@@ -128,6 +129,8 @@ module Ast = {
       name ++
       " {\n" ++
       attrs->Array.joinWith(",\n", ((attr, ty)) => attr ++ ": " ++ Types.showMonoTy(ty)) ++ "\n}"
+    | ImplDecl(structName, decls) =>
+      `${structName} {\n` ++ decls->Array.joinWith("\n\n", showDecl) ++ "\n}"
     }
 
   and showStmt = stmt =>

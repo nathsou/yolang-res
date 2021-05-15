@@ -36,6 +36,7 @@ let keyword =
       string("as")->map(_ => Keyword(Keywords.As)),
       string("unsafe")->map(_ => Keyword(Keywords.Unsafe)),
       string("struct")->map(_ => Keyword(Keywords.Struct)),
+      string("impl")->map(_ => Keyword(Keywords.Impl)),
     ]),
     different(alphaNum),
   )->map(((kw, _)) => kw)

@@ -81,6 +81,11 @@ and rewriteDecl = decl =>
   | CoreAst.CoreFuncDecl(f, args, body) => CoreAst.CoreFuncDecl(f, args, rewriteExpr(body))
   | CoreAst.CoreGlobalDecl(x, mut, init) => CoreAst.CoreGlobalDecl(x, mut, rewriteExpr(init))
   | CoreAst.CoreStructDecl(_) => decl
+  | CoreAst.CoreImplDecl(typeName, funcs) =>
+    CoreAst.CoreImplDecl(
+      typeName,
+      funcs->Array.map(((f, args, body)) => (f, args, rewriteExpr(body))),
+    )
   }
 
 module StructMatching = {
@@ -267,6 +272,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   | CoreAppExpr(tau, lhs, args) => {
       let argsTy = args->Array.map(CoreExpr.typeOf)
       let fTy = funTy(argsTy, tau)
+
       collectCoreExprTypeSubstsWith(env, lhs, fTy)
       ->flatMap(sig1 => {
         args
@@ -319,22 +325,22 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
   | CoreStructExpr(name, attrs) =>
     switch Context.getStruct(name) {
     | Some({attributes}) => {
-        let res = attributes->Array.reduce(Ok((env, Subst.empty)), (
-          acc,
-          {name: attrName, ty: attrTy},
-        ) => {
-          acc->flatMap(((gammaN, sigN)) => {
-            switch attrs->Array.getBy(((n, _)) => n == attrName) {
-            | None => Error(`missing field "${attrName}" for struct "${name}"`)
-            | Some((_, val)) =>
-              collectCoreExprTypeSubstsWith(gammaN, val, attrTy)->flatMap(sig => {
-                let gammaN' = substEnv(sig, gammaN)
-                let sig' = substCompose(sig, sigN)
-                Ok((gammaN', sig'))
-              })
-            }
+        let res =
+          attributes
+          ->Array.keep(({impl}) => impl->Option.isNone)
+          ->Array.reduce(Ok((env, Subst.empty)), (acc, {name: attrName, ty: attrTy}) => {
+            acc->flatMap(((gammaN, sigN)) => {
+              switch attrs->Array.getBy(((n, _)) => n == attrName) {
+              | None => Error(`missing attribute "${attrName}" for struct "${name}"`)
+              | Some((_, val)) =>
+                collectCoreExprTypeSubstsWith(gammaN, val, attrTy)->flatMap(sig => {
+                  let gammaN' = substEnv(sig, gammaN)
+                  let sig' = substCompose(sig, sigN)
+                  Ok((gammaN', sig'))
+                })
+              }
+            })
           })
-        })
 
         res->map(((_, sig)) => sig)
       }
@@ -361,10 +367,13 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
           switch Context.getStruct(name) {
           | Some({attributes}) =>
             switch attributes->Array.getBy(({name}) => name === attr) {
-            | Some({ty: attrTy}) =>
-              unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
-                substCompose(sig2, sig1)
-              )
+            | Some({ty: attrTy, impl}) => {
+                let attrTy = impl->Option.mapWithDefault(attrTy, f => f.contents.ty)
+
+                unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
+                  substCompose(sig2, sig1)
+                )
+              }
             | None => Error(`attribute "${attr}" does not exist on struct "${name}"`)
             }
           | None => Error(`undeclared struct: "${name}"`)
@@ -442,7 +451,11 @@ let inferCoreExprType = expr => {
   })
 }
 
-let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
+let renameStructImpl = (structName: string, f: string): string => {
+  `impl_${structName}_${f}`
+}
+
+let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
   switch decl {
   | CoreFuncDecl(f, args, body) =>
     collectCoreExprTypeSubsts(
@@ -454,8 +467,45 @@ let registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => 
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
     })
   | CoreStructDecl(name, attrs) => {
-      Context.declareStruct(Context.makeStruct(name, attrs))
+      Context.declareStruct(Context.Struct.make(name, attrs))
       Ok((env, Subst.empty))
+    }
+  | CoreImplDecl(typeName, funcs) =>
+    switch Context.getStruct(typeName) {
+    | Some(struct) =>
+      funcs->Array.reduce(Ok((env, Subst.empty)), (acc, (f, args, body)) => {
+        acc->Result.flatMap(((gamma, sig)) => {
+          // rename the function
+          f.contents.newName = renameStructImpl(typeName, f.contents.name)
+
+          // add the function to the struct's signature
+          struct->Context.Struct.addImpl(f)
+
+          // remove the first (self) argument
+          let remainingArgs = args == [] ? [] : args->Array.sliceToEnd(1)
+
+          let structTy = TyStruct(NamedStruct(typeName))
+
+          // add the first argument to the environment
+          let gammaSelf = switch args->Array.get(0) {
+          | Some(arg) => {
+              arg.contents.ty = structTy
+              gamma->Env.addMono(arg.contents.name, structTy)
+            }
+          | None => gamma
+          }
+
+          registerDecl(gammaSelf, CoreFuncDecl(f, remainingArgs, body))->Result.flatMap(((
+            gamma',
+            sig',
+          )) => {
+            let sig'' = substCompose(sig', sig)
+            Context.substNameRef(sig'', f)
+            Ok((gamma', sig''))
+          })
+        })
+      })
+    | None => Error(`cannot implement for unknown type "${typeName}"`)
     }
   }
 }

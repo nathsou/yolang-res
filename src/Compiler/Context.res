@@ -11,7 +11,14 @@ type nameRef = ref<name>
 type renameMap = HashMap.Int.t<nameRef>
 
 module Struct = {
-  type attribute = {name: string, offset: int, ty: Types.monoTy, size: int}
+  type attribute = {
+    name: string,
+    offset: int,
+    ty: Types.monoTy,
+    size: int,
+    impl: option<nameRef>,
+  }
+
   type t = {name: string, attributes: array<attribute>, size: int}
 
   let show = ({name, attributes}: t) => {
@@ -25,63 +32,63 @@ module Struct = {
 
   let toPartialStructType = ({attributes}: t, tail: int) => {
     Types.TyStruct(
-      Types.PartialStruct(
+      PartialStruct(
         attributes->Array.map(({name, ty}) => (name, ty))->Types.Attributes.fromArray(tail),
       ),
     )
   }
-}
 
-module Size = {
-  exception UnkownTypeSize(Types.monoTy)
+  let make = (name, attributes: array<(string, Types.monoTy)>): t => {
+    let offset = ref(0)
+    let attrs: array<attribute> = []
 
-  let rec size = (ty: Types.monoTy) =>
-    switch ty {
-    | TyConst("u32", []) => 4
-    | TyConst("u64", []) => 8
-    | TyConst("bool", []) => 4
-    | TyConst("()", []) => 0 // Zero-sized Type
-    | TyConst("Fun", _) => 4
-    | TyConst("Ptr", _) => 4
-    | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
-    | TyStruct(_) => 4 // structs are references
-    | _ => raise(UnkownTypeSize(ty))
-    }
+    attributes->Array.forEach(((attr, ty)) => {
+      let size = ty->Types.Size.size
+      let _ = attrs->Js.Array2.push({
+        name: attr,
+        ty: ty,
+        offset: offset.contents,
+        size: size,
+        impl: None,
+      })
+      offset := offset.contents + size
+    })
 
-  let sizeLog2 = ty => Int.fromFloat(Js.Math.ceil_float(Js.Math.log2(Float.fromInt(size(ty)))))
+    {name: name, attributes: attrs, size: offset.contents}
+  }
 
-  let isZeroSizedType = (ty: Types.monoTy) => ty->size == 0
-}
-
-let makeStruct = (name, attributes: array<(string, Types.monoTy)>): Struct.t => {
-  let offset = ref(0)
-  let attrs: array<Struct.attribute> = []
-
-  attributes->Array.forEach(((attr, ty)) => {
-    let size = ty->Size.size
-    let _ = attrs->Js.Array2.push({name: attr, ty: ty, offset: offset.contents, size: size})
-    offset := offset.contents + size
-  })
-
-  {name: name, attributes: attrs, size: offset.contents}
+  let addImpl = (self: t, name: nameRef) => {
+    let _ = self.attributes->Js.Array2.push({
+      name: name.contents.name,
+      ty: name.contents.ty,
+      offset: 0,
+      size: 0,
+      impl: Some(name),
+    })
+  }
 }
 
 type t = {
   mutable tyVarIndex: int,
-  identifiers: array<string>,
+  mutable identifiers: array<string>,
   renaming: renameMap,
   structs: HashMap.String.t<Struct.t>,
 }
 
-let make = (): t => {
+// global context
+let context = {
   tyVarIndex: 0,
   identifiers: [],
   renaming: HashMap.Int.make(~hintSize=10),
   structs: HashMap.String.make(~hintSize=5),
 }
 
-// global context
-let context = make()
+let clear = (): unit => {
+  context.tyVarIndex = 0
+  context.identifiers = []
+  context.renaming->HashMap.Int.clear
+  context.structs->HashMap.String.clear
+}
 
 let freshTyVarIndex = () => {
   let res = context.tyVarIndex
@@ -129,12 +136,12 @@ let getIdentifier = (name: string): nameRef => {
   }
 }
 
+let substNameRef = (s: Subst.t, n: nameRef): unit => {
+  n.contents.ty = s->Subst.substMono(n.contents.ty)
+}
+
 let substIdentifiers = (s: Subst.t): unit => {
-  context.renaming
-  ->HashMap.Int.valuesToArray
-  ->Array.forEach(id => {
-    id.contents.ty = s->Subst.substMono(id.contents.ty)
-  })
+  context.renaming->HashMap.Int.valuesToArray->Array.forEach(substNameRef(s))
 }
 
 let declareStruct = (s: Struct.t): unit => {

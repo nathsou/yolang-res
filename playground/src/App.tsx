@@ -45,6 +45,7 @@ function App() {
   const onRun = useCallback(async () => {
     try {
       const res = compile(code);
+
       if (res.tag === 'Ok') {
         setOutput('running...');
         const output = await runModule(res.value[1]);
@@ -58,13 +59,17 @@ function App() {
   }, [code, setOutput]);
 
   const onDisassemble = useCallback(() => {
-    const res = compile(code);
+    try {
+      const res = compile(code);
 
-    if (res.tag === 'Ok') {
-      const [module] = res.value;
-      setOutput(Module_show(module));
-    } else {
-      setOutput(res.value);
+      if (res.tag === 'Ok') {
+        const [module] = res.value;
+        setOutput(Module_show(module));
+      } else {
+        setOutput(res.value);
+      }
+    } catch (error) {
+      setOutput(`${error}`);
     }
   }, [code, setOutput]);
 

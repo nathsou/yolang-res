@@ -4,14 +4,11 @@ struct MinMax {
   max: u32
 }
 
-struct MinMax2 {
-  min: u32,
-  maxx: u32
-}
-
-fn reset(m) {
-  m.min = 0;
-  m.max = 0;
+impl MinMax {
+  fn reset(self) {
+    self.min = 0;
+    self.max = 0;
+  }
 }
 
 fn main() {
@@ -20,7 +17,7 @@ fn main() {
     max: 1998
   };
 
-  reset(m);
+  m.reset();
 
   m.min + m.max == 0
 }

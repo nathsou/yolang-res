@@ -20,11 +20,12 @@ module CoreAst = {
     | CoreTupleExpr(array<expr>)
     | CoreStructExpr(string, array<(string, expr)>)
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
+  and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
   and decl =
     | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
     | CoreStructDecl(string, array<(string, Types.monoTy)>)
-  and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
+    | CoreImplDecl(string, array<(Context.nameRef, array<Context.nameRef>, expr)>)
 
   let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
@@ -144,8 +145,15 @@ module CoreAst = {
         `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(init, ~subst)}`,
       )
     | CoreStructDecl(name, attrs) => Ast.showDecl(Ast.StructDecl(name, attrs))
+    | CoreImplDecl(typeName, funcs) =>
+      `impl ${typeName} {\n` ++
+      funcs->Array.joinWith("\n\n", ((f, args, body)) =>
+        showDecl(CoreFuncDecl(f, args, body))
+      ) ++ "\n}"
     }
   }
+
+  exception UnexpectedDeclarationInImplBlock(decl)
 
   let rec fromExpr = expr => {
     open Context
@@ -229,6 +237,19 @@ module CoreAst = {
     | Ast.GlobalDecl(x, mut, init) =>
       CoreGlobalDecl(Context.freshIdentifier(x), mut, fromExpr(init))
     | Ast.StructDecl(name, attrs) => CoreStructDecl(name, attrs)
+    | Ast.ImplDecl(typeName, decls) => {
+        let funcs =
+          decls
+          ->Array.map(fromDecl)
+          ->Array.map(d =>
+            switch d {
+            | CoreFuncDecl(f, args, body) => (f, args, body)
+            | _ => raise(UnexpectedDeclarationInImplBlock(d))
+            }
+          )
+
+        CoreImplDecl(typeName, funcs)
+      }
     }
   }
 
@@ -259,6 +280,7 @@ module CoreAst = {
           // O(len(attributes)^2) but who cares in this case?
           let res =
             attributes
+            ->Array.keep(({impl}) => impl->Option.isNone)
             ->Array.map(({name: attrName}) => attrs->Array.getBy(((name, _)) => name == attrName))
             ->ArrayUtils.mapOption(((attrName, val)) => (attrName, go(val)))
 
@@ -285,6 +307,8 @@ module CoreAst = {
     | CoreFuncDecl(f, args, body) => CoreFuncDecl(f, args, substExpr(s, body))
     | CoreGlobalDecl(x, mut, init) => CoreGlobalDecl(x, mut, substExpr(s, init))
     | CoreStructDecl(_) => decl
+    | CoreImplDecl(typeName, funcs) =>
+      CoreImplDecl(typeName, funcs->Array.map(((f, args, body)) => (f, args, substExpr(s, body))))
     }
   }
 }

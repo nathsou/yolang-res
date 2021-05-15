@@ -111,19 +111,19 @@ let tuple = parens(
 
 let primary = anyOf([int, bool, unit, var, tuple, parens(expr)])
 
-let app = alt(
-  then(primary, some(parens(commas(expr))))->map(((f, args)) =>
-    args->Array.reduce(f, (f, args) => AppExpr(f, args))
-  ),
-  primary,
-)
-
 let attributeAccess = alt(
-  leftAssoc(app, then(token(Symbol(Symbol.Dot)), ident), (
+  leftAssoc(primary, then(token(Symbol(Symbol.Dot)), ident), (
     lhs,
     (_, attr),
   ) => Ast.AttributeAccessExpr(lhs, attr)),
-  app,
+  primary,
+)
+
+let app = alt(
+  then(attributeAccess, some(parens(commas(expr))))->map(((f, args)) =>
+    args->Array.reduce(f, (f, args) => AppExpr(f, args))
+  ),
+  attributeAccess,
 )
 
 let unaryOp = anyOf([
@@ -155,7 +155,7 @@ let eqOp = alt(
   token(Symbol(Symbol.Neq))->map(_ => BinOp.Neq),
 )
 
-let factor = attributeAccess
+let factor = app
 
 let unary = alt(then(unaryOp, factor)->map(((op, expr)) => Ast.UnaryOpExpr(op, expr)), factor)
 
@@ -328,7 +328,20 @@ let funDecl = alt(
   structDecl,
 )
 
-decl := funDecl.contents
+let implDecl = alt(
+  seq3(
+    token(Keyword(Keywords.Impl)),
+    uppercaseIdent,
+    seq3(token(Symbol(Symbol.Lbracket)), many(funDecl), token(Symbol(Symbol.Rbracket)))->map(((
+      _,
+      decls,
+      _,
+    )) => decls),
+  )->map(((_, structName, decls)) => Ast.ImplDecl(structName, decls)),
+  funDecl,
+)
+
+decl := implDecl.contents
 
 let prog = many(decl)
 

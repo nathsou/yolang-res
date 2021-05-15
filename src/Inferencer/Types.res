@@ -33,6 +33,27 @@ let tupleTy = tys => TyConst("Tuple", tys)
 
 let pointerTy = ty => TyConst("Ptr", [ty])
 
+module Size = {
+  exception UnkownTypeSize(monoTy)
+
+  let rec size = (ty: monoTy) =>
+    switch ty {
+    | TyConst("u32", []) => 4
+    | TyConst("u64", []) => 8
+    | TyConst("bool", []) => 4
+    | TyConst("()", []) => 0 // Zero-sized Type
+    | TyConst("Fun", _) => 4
+    | TyConst("Ptr", _) => 4
+    | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
+    | TyStruct(_) => 4 // structs are references
+    | _ => raise(UnkownTypeSize(ty))
+    }
+
+  let sizeLog2 = ty => Int.fromFloat(Js.Math.ceil_float(Js.Math.log2(Float.fromInt(size(ty)))))
+
+  let isZeroSizedType = (ty: monoTy) => ty->size == 0
+}
+
 module Attributes = {
   type t = structAttributes
 
