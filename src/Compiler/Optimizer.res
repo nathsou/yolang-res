@@ -10,6 +10,7 @@ let peephole = (insts: array<Wasm.Inst.t>) => {
     | list{ConstF32(_), Drop, ...tl} => aux(tl, acc)
     | list{ConstF64(_), Drop, ...tl} => aux(tl, acc)
     | list{GetLocal(_), Drop, ...tl} => aux(tl, acc)
+    | list{Return, Drop, ...tl} => aux(list{Return, ...tl}, acc)
     | list{SetLocal(a), GetLocal(b), ...tl} if a == b => aux(list{TeeLocal(a), ...tl}, acc)
     | list{LeI32Unsigned, EqzI32, ...tl} => aux(list{GtI32Unsigned, ...tl}, acc)
     | list{GtI32Unsigned, EqzI32, ...tl} => aux(list{LeI32Unsigned, ...tl}, acc)

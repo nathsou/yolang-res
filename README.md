@@ -6,5 +6,5 @@ Yo is a simple programming language with syntax similar to Rust which compiles d
 
 ## Features
 - Powerful type inferencer
-- Structs
+- Structs (with impl blocks)
 - First-class functions (not closures yet)
