@@ -18,7 +18,7 @@ let identifier =
   ))
 
 let uppercaseIdentifier =
-  many(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(
+  some(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(
     chars->Array.joinWith("", c => String.make(1, c)),
   ))
 
