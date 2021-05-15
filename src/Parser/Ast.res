@@ -75,9 +75,9 @@ module Ast = {
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
 
   type rec decl =
-    | FuncDecl(string, array<string>, expr)
+    | FuncDecl(string, array<(string, bool)>, expr)
     | GlobalDecl(string, bool, expr)
-    | StructDecl(string, array<(string, Types.monoTy)>)
+    | StructDecl(string, array<(string, Types.monoTy, bool)>)
     | ImplDecl(string, array<decl>)
 
   let rec showExpr = expr =>
@@ -122,13 +122,18 @@ module Ast = {
 
   and showDecl = decl =>
     switch decl {
-    | FuncDecl(f, args, body) => `fn ${f}(${args->Array.joinWith(", ", x => x)}) ${showExpr(body)}`
+    | FuncDecl(f, args, body) =>
+      `fn ${f}(${args->Array.joinWith(", ", ((x, mut)) => (mut ? "mut " : "") ++ x)}) ${showExpr(
+          body,
+        )}`
     | GlobalDecl(x, mut, init) => `${mut ? "mut" : "let"} ${x} = ${showExpr(init)}`
     | StructDecl(name, attrs) =>
       "struct " ++
       name ++
       " {\n" ++
-      attrs->Array.joinWith(",\n", ((attr, ty)) => attr ++ ": " ++ Types.showMonoTy(ty)) ++ "\n}"
+      attrs->Array.joinWith(",\n", ((attr, ty, mut)) =>
+        (mut ? "mut " : "") ++ attr ++ ": " ++ Types.showMonoTy(ty)
+      ) ++ "\n}"
     | ImplDecl(structName, decls) =>
       `${structName} {\n` ++ decls->Array.joinWith("\n\n", showDecl) ++ "\n}"
     }

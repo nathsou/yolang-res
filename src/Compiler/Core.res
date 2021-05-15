@@ -22,10 +22,10 @@ module CoreAst = {
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
   and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
   and decl =
-    | CoreFuncDecl(Context.nameRef, array<Context.nameRef>, expr)
+    | CoreFuncDecl(Context.nameRef, array<(Context.nameRef, bool)>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
-    | CoreStructDecl(string, array<(string, Types.monoTy)>)
-    | CoreImplDecl(string, array<(Context.nameRef, array<Context.nameRef>, expr)>)
+    | CoreStructDecl(string, array<(string, Types.monoTy, bool)>)
+    | CoreImplDecl(string, array<(Context.nameRef, array<(Context.nameRef, bool)>, expr)>)
 
   let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
@@ -128,10 +128,11 @@ module CoreAst = {
     | CoreFuncDecl(f, args, body) => {
         let args = switch subst {
         | Some(s) =>
-          args->Array.joinWith(", ", x =>
+          args->Array.joinWith(", ", ((x, mut)) =>
+            (mut ? "mut " : "") ++
             `${x.contents.name}: ${showMonoTy(Subst.substMono(s, x.contents.ty))}`
           )
-        | None => args->Array.joinWith(", ", x => x.contents.name)
+        | None => args->Array.joinWith(", ", ((x, mut)) => (mut ? "mut " : "") ++ x.contents.name)
         }
 
         withType(
@@ -231,7 +232,7 @@ module CoreAst = {
   and fromDecl = decl => {
     switch decl {
     | Ast.FuncDecl(f, args, body) => {
-        let args = args->Array.map(Context.freshIdentifier(~ty=None))
+        let args = args->Array.map(((x, mut)) => (Context.freshIdentifier(~ty=None, x), mut))
         CoreFuncDecl(Context.freshIdentifier(f), args, fromExpr(body))
       }
     | Ast.GlobalDecl(x, mut, init) =>

@@ -3,7 +3,7 @@ let SIZEOF_U32 = 4;
 
 struct Array {
   start: Ptr<u32>,
-  length: u32,
+  mut length: u32,
   capacity: u32,
 }
 
@@ -16,26 +16,26 @@ impl Array {
     *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
   }
 
-  fn push(self, val) {
+  fn push(mut self, val) {
     self.write(self.length, val);
     self.length = self.length + 1;
   }
 }
 
 struct Sieve {
-  primes: Array,
-  current: u32
+  mut primes: Array,
+  mut current: u32
 }
 
 impl Sieve {
-  fn clear(self) {
+  fn clear(mut self) {
     self.primes.length = 0;
     // 2 is the first prime
     self.primes.push(2);
     self.current = 1;
   }
 
-  fn isPrime(self, n) {
+  fn isPrime(mut self, n) {
     mut i = 0;
     mut p = self.primes.read(i);
 
@@ -52,7 +52,7 @@ impl Sieve {
     true
   }
 
-  fn nextPrime(self) {
+  fn nextPrime(mut self) {
     self.current = self.current + 2;
 
     while !self.isPrime(self.current) {
@@ -63,7 +63,7 @@ impl Sieve {
   }
 
   // count the prime numbers <= m
-  fn countUpTo(self, m) {
+  fn countUpTo(mut self, m) {
     self.clear();
 
     while self.current <= m {

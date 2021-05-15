@@ -23,7 +23,7 @@ module CompilerExn = {
     | InvalidFunctionSignature(ty) => `invalid function signature: ${Types.showMonoTy(ty)}`
     | VariableNotFound(x) => `variable "${x}" not found`
     | EmptyFunctionStack => "Function stack is empty"
-    | CannotReassignImmutableValue(x) => `cannot reassign "${x}" as it is immutable`
+    | CannotReassignImmutableValue(x) => `cannot mutate "${x}" as it is behind an immutable binding`
     | FunctionNotFound(f) => `no function named "${f}" found`
     | Unimplemented(message) => `unimplemented: ${message}`
     | UnsupportedGlobalInitializer(expr) => `unsupported global initializer: ${CoreExpr.show(expr)}`
@@ -131,7 +131,7 @@ module Func = {
   type t = {
     name: string,
     locals: array<Local.t>,
-    params: array<(string, Types.monoTy)>,
+    params: array<(string, Types.monoTy, bool)>,
     ret: Types.monoTy,
     instructions: array<Wasm.Inst.t>,
   }
@@ -140,7 +140,7 @@ module Func = {
     let self: t = {
       name: name,
       locals: [],
-      params: params->Array.keep(((_, xTy)) => !(xTy->Types.Size.isZeroSizedType)),
+      params: params->Array.keep(((_, xTy, _)) => !(xTy->Types.Size.isZeroSizedType)),
       ret: ret,
       instructions: [],
     }
@@ -164,8 +164,11 @@ module Func = {
   }
 
   let findLocal = (self: t, name: string): option<(Wasm.Func.Local.index, bool)> => {
-    switch self.params->Array.getIndexBy(((x, _)) => x == name) {
-    | Some(idx) => Some((idx, true))
+    switch self.params->Array.getIndexBy(((x, _, _)) => x == name) {
+    | Some(idx) => {
+        let (_, _, mut) = self.params->Array.getExn(idx)
+        Some((idx, mut))
+      }
     | None =>
       switch self.locals->ArrayUtils.getReverseIndexBy(local => local.name == name) {
       | Some(idx) =>
@@ -176,7 +179,7 @@ module Func = {
   }
 
   let toWasmFunc = (self: t): Wasm.Func.t => {
-    let sig = funcSignatureOf(Types.funTy(self.params->Array.map(((_, xTy)) => xTy), self.ret))
+    let sig = funcSignatureOf(Types.funTy(self.params->Array.map(((_, xTy, _)) => xTy), self.ret))
 
     let locals = Wasm.Func.Local.fromTypes(
       self.locals
@@ -234,8 +237,8 @@ let getCurrentFuncExn = (self: t): Func.t => {
   }
 }
 
-let findFuncIndexByName = (self: t, name: string): option<Wasm.Func.index> => {
-  self.funcs->Array.getIndexBy(f => f.name == name)
+let findFuncIndexByName = (self: t, name: string): option<(Func.t, Wasm.Func.index)> => {
+  self.funcs->ArrayUtils.getValueAndIndexBy(f => f.name == name)
 }
 
 let emit = (self: t, inst: Wasm.Inst.t): unit => {
@@ -344,9 +347,10 @@ type structAttributeInfo = {
   offset: int,
   ty: Types.monoTy,
   size: int,
+  mut: bool,
 }
 
-type attributeInfo = StructAttr(structAttributeInfo) | StructImpl(Wasm.Func.index)
+type attributeInfo = StructAttr(structAttributeInfo) | StructImpl((Func.t, Wasm.Func.index, bool))
 
 let getStructAttributeOffset = (self: t, structTy: Types.monoTy, attr: string): result<
   attributeInfo,
@@ -356,21 +360,38 @@ let getStructAttributeOffset = (self: t, structTy: Types.monoTy, attr: string): 
   | TyStruct(ty) =>
     let {attributes, name: structName} = getStructExn(ty)
     switch attributes->Array.getBy(({name}) => name == attr) {
-    | Some({offset, ty, size, impl}) =>
+    | Some({offset, ty, size, impl, mut}) =>
       switch impl {
-      | Some(funcName) =>
+      | Some((funcName, isSelfMutable)) =>
         switch self->findFuncIndexByName(
           Inferencer.renameStructImpl(structName, funcName.contents.name),
         ) {
-        | Some(funcIdx) => Ok(StructImpl(funcIdx))
+        | Some((func, funcIdx)) => Ok(StructImpl((func, funcIdx, isSelfMutable)))
         | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
         }
-      | None => Ok(StructAttr({offset: offset, ty: ty, size: size}))
+      | None => Ok(StructAttr({offset: offset, ty: ty, size: size, mut: mut}))
       }
     | None => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
     }
 
   | _ => Error(CompilerExn.InvalidAttributeAccess(attr, structTy))
+  }
+}
+
+let rec findImmutableBinding = (self: t, expr: CoreExpr.t): option<string> => {
+  switch expr {
+  | CoreVarExpr(x) =>
+    switch self->resolveVar(x.contents.newName) {
+    | Some(Local(_, mut)) | Some(Global(_, mut)) => mut ? None : Some(x.contents.name)
+    | None => raise(CompilerExn.VariableNotFound(x.contents.name))
+    }
+  | CoreAttributeAccessExpr(_, lhs, attr) =>
+    switch self->getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
+    | Ok(StructAttr({mut})) => mut ? self->findImmutableBinding(lhs) : Some(attr)
+    | Ok(StructImpl(_)) => None
+    | Error(err) => raise(err)
+    }
+  | _ => None
   }
 }
 
@@ -490,11 +511,21 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         }
       | CoreAttributeAccessExpr(_, lhs, attr) =>
         switch self->getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
-        | Ok(StructAttr({offset, size})) =>
-          if size > 0 {
-            self->compileExpr(lhs)
-            self->compileExpr(rhs)
-            self->emit(Wasm.Inst.StoreI32(0, offset))
+        | Ok(StructAttr({offset, size, mut})) => {
+            if !mut {
+              raise(CompilerExn.CannotReassignImmutableValue(attr))
+            }
+
+            switch self->findImmutableBinding(lhs) {
+            | Some(name) => raise(CompilerExn.CannotReassignImmutableValue(name))
+            | None => ()
+            }
+
+            if size > 0 {
+              self->compileExpr(lhs)
+              self->compileExpr(rhs)
+              self->emit(Wasm.Inst.StoreI32(0, offset))
+            }
           }
         | Ok(StructImpl(_)) =>
           raise(
@@ -540,22 +571,43 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->emit(Wasm.Inst.CallIndirect(funcSigIndex, 0))
       }
 
+      let checkArgsMutability = ({params}: Func.t) => {
+        args
+        ->Array.zip(params)
+        ->Array.forEach(((arg, (argName, _, mut))) => {
+          // if the argument is mutable, make sure the given value is under a mutable binding
+          if mut && self->findImmutableBinding(arg)->Option.isSome {
+            raise(CompilerExn.CannotReassignImmutableValue(argName))
+          }
+        })
+      }
+
       switch lhs {
       | CoreVarExpr(f) =>
         switch self->resolveVar(f.contents.newName) {
         | None =>
           switch self->findFuncIndexByName(f.contents.newName) {
-          | Some(idx) => {
+          | Some((func, idx)) => {
+              checkArgsMutability(func)
+
               args->Array.forEach(arg => {
                 self->compileExpr(arg)
               })
+
               self->emit(Wasm.Inst.Call(idx))
             }
           | None => raise(CompilerExn.FunctionNotFound(f.contents.name))
           }
         | _ => callIndirect()
         }
-      | CoreAttributeAccessExpr(_, structSelf, _) => {
+      | CoreAttributeAccessExpr(_, structSelf, attr) => {
+          // check args mutability
+          switch self->getStructAttributeOffset(structSelf->CoreAst.typeOfExpr, attr) {
+          | Ok(StructImpl((func, _, _))) => checkArgsMutability(func)
+          | Ok(StructAttr(_)) => ()
+          | Error(err) => raise(err)
+          }
+
           self->compileExpr(structSelf)
           callIndirect()
         }
@@ -582,7 +634,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       | None => ()
       }
 
-      let funcIndex = self->compileFuncDecl(name, args, body)
+      let funcIndex = self->compileFuncDecl(name, args->Array.map(x => (x, false)), body)
 
       self->emit(Wasm.Inst.ConstI32(funcIndex))
     }
@@ -608,7 +660,16 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->pushShadowStack(structSize)
 
       // each attribute needs the address of the begining of the struct
-      attributes->Array.forEach(({ty, impl}) => {
+      attributes
+      ->Array.zip(attrs)
+      ->Array.forEach((({ty, mut, impl}, (_, expr))) => {
+        if mut {
+          switch self->findImmutableBinding(expr) {
+          | Some(bindingName) => raise(CompilerExn.CannotReassignImmutableValue(bindingName))
+          | _ => ()
+          }
+        }
+
         if impl->Option.isNone && ty->Types.Size.size > 0 {
           self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
         }
@@ -659,7 +720,17 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->compileExpr(lhs)
         self->emit(Wasm.Inst.LoadI32(0, offset))
       }
-    | Ok(StructImpl(funcIdx)) => self->emit(Wasm.Inst.ConstI32(funcIdx))
+    | Ok(StructImpl((_, funcIdx, isSelfMutable))) => {
+        if isSelfMutable {
+          switch self->findImmutableBinding(lhs) {
+          | Some(immutableBinding) =>
+            raise(CompilerExn.CannotReassignImmutableValue(immutableBinding))
+          | None => ()
+          }
+        }
+
+        self->emit(Wasm.Inst.ConstI32(funcIdx))
+      }
     | Error(err) => raise(err)
     }
   }
@@ -690,10 +761,16 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
 and compileFuncDecl = (
   self: t,
   f: Context.nameRef,
-  args: array<Context.nameRef>,
+  args: array<(Context.nameRef, bool)>,
   body,
 ): Wasm.Func.index => {
-  let args = args->Array.map(x => (x.contents.name, x.contents.ty))
+  let args = args->Array.map(((x, mut)) => (
+    x.contents.name,
+    x.contents.ty,
+    // an argument can be reassigned in the body of a function
+    // if it was marked as mutable or if it is not a referenced type
+    mut || !(x.contents.ty->Types.isReferencedTy),
+  ))
   let func = Func.make(f.contents.newName, args, CoreExpr.typeOf(body))
 
   let funcIdx = self.funcs->Js.Array2.push(func) - 1

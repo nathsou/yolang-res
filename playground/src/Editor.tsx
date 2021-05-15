@@ -23,5 +23,6 @@ export const Editor: FC<EditorProps> = ({ theme, code, onChange }) => {
       onChange={onChange}
       fontSize={16}
       editorProps={{ $blockScrolling: true }}
+      setOptions={{ tabSize: 2 }}
     />);
 };

@@ -93,3 +93,7 @@ let mapResult = (optns: array<result<'a, 'b>>, f: 'a => 'c): result<array<'c>, '
   | None => Ok(res)
   }
 }
+
+let getValueAndIndexBy = (values: array<'a>, pred: 'a => bool): option<('a, int)> => {
+  values->Array.getIndexBy(pred)->Option.map(idx => (values->Array.getExn(idx), idx))
+}

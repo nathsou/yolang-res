@@ -1,6 +1,9 @@
 open Belt
 open FuncUtils
 
+// TODO: traits
+// http://smallcultfollowing.com/babysteps/blog/2017/01/26/lowering-rust-traits-to-logic/
+
 type rec monoTy = TyVar(int) | TyConst(string, array<monoTy>) | TyStruct(structTy)
 and structAttributes = StructTail(monoTy) | StructCons((string, monoTy), structAttributes)
 and structTy = NamedStruct(string) | PartialStruct(structAttributes)
@@ -20,6 +23,16 @@ module Env = {
   let remove = (env: t, x): t => env->remove(x)
   let has = (env: t, x): bool => env->has(x)
   let get = (env: t, x): option<polyTy> => env->get(x)
+
+  let show = (env: t, showPolyTy: polyTy => string) => {
+    let body =
+      env
+      ->Map.String.map(showPolyTy)
+      ->Map.String.toArray
+      ->Array.joinWith("\n", ((k, v)) => `  ${k}: ${v}`)
+
+    `{\n${body}\n}`
+  }
 }
 
 let u32Ty = TyConst("u32", [])
@@ -33,6 +46,12 @@ let tupleTy = tys => TyConst("Tuple", tys)
 
 let pointerTy = ty => TyConst("Ptr", [ty])
 
+let isReferencedTy = ty =>
+  switch ty {
+  | TyStruct(_) => true
+  | _ => false
+  }
+
 module Size = {
   exception UnkownTypeSize(monoTy)
 
@@ -44,6 +63,7 @@ module Size = {
     | TyConst("()", []) => 0 // Zero-sized Type
     | TyConst("Fun", _) => 4
     | TyConst("Ptr", _) => 4
+    | TyConst("Mut", [ty]) => size(ty)
     | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
     | TyStruct(_) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
@@ -198,14 +218,4 @@ let showPolyTy = ((polyVars, ty): polyTy) => {
   } else {
     `forall ${polyVars->Array.joinWith(", ", showTyVar)}. ${showMonoTy(ty)}`
   }
-}
-
-let showTyEnv = env => {
-  let body =
-    env
-    ->Map.String.map(showPolyTy)
-    ->Map.String.toArray
-    ->Array.joinWith("\n", ((k, v)) => `  ${k}: ${v}`)
-
-  `{\n${body}\n}`
 }

@@ -21,6 +21,6 @@ export const Console: FC<ConsoleProps> = ({ theme, text }) => {
       onChange={() => null}
       fontSize={16}
       editorProps={{ $blockScrolling: true }}
-      setOptions={{ showLineNumbers: false }}
+      setOptions={{ showLineNumbers: true, tabSize: 2 }}
     />);
 };

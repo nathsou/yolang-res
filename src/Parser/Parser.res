@@ -309,22 +309,26 @@ let structDecl = alt(
     token(Keyword(Keywords.Struct)),
     uppercaseIdent,
     token(Symbol(Symbol.Lbracket)),
-    commas(seq3(ident, token(Symbol(Symbol.Colon)), type_)),
+    commas(
+      seq3(then(optional(token(Keyword(Keywords.Mut))), ident), token(Symbol(Symbol.Colon)), type_),
+    ),
     token(Symbol(Symbol.Rbracket)),
   )->map(((_, name, _, entries, _)) => {
-    let entries = entries->Array.map(((attr, _, ty)) => (attr, ty))
+    let entries = entries->Array.map((((mut, attr), _, ty)) => (attr, ty, mut->Option.isSome))
     Ast.StructDecl(name, entries)
   }),
   globalDecl,
 )
 
 let funDecl = alt(
-  seq4(token(Keyword(Keywords.Fn)), ident, parens(commas(ident)), block)->map(((
-    _,
-    f,
-    args,
-    body,
-  )) => Ast.FuncDecl(f, args, body)),
+  seq4(
+    token(Keyword(Keywords.Fn)),
+    ident,
+    parens(commas(then(optional(token(Keyword(Keywords.Mut))), ident)))->map(args =>
+      args->Array.map(((mut, x)) => (x, mut->Option.isSome))
+    ),
+    block,
+  )->map(((_, f, args, body)) => Ast.FuncDecl(f, args, body)),
   structDecl,
 )
 

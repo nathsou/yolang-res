@@ -13,10 +13,11 @@ type renameMap = HashMap.Int.t<nameRef>
 module Struct = {
   type attribute = {
     name: string,
+    mut: bool,
     offset: int,
     ty: Types.monoTy,
     size: int,
-    impl: option<nameRef>,
+    impl: option<(nameRef, bool)>,
   }
 
   type t = {name: string, attributes: array<attribute>, size: int}
@@ -38,14 +39,15 @@ module Struct = {
     )
   }
 
-  let make = (name, attributes: array<(string, Types.monoTy)>): t => {
+  let make = (name, attributes: array<(string, Types.monoTy, bool)>): t => {
     let offset = ref(0)
     let attrs: array<attribute> = []
 
-    attributes->Array.forEach(((attr, ty)) => {
+    attributes->Array.forEach(((attr, ty, mut)) => {
       let size = ty->Types.Size.size
       let _ = attrs->Js.Array2.push({
         name: attr,
+        mut: mut,
         ty: ty,
         offset: offset.contents,
         size: size,
@@ -57,13 +59,14 @@ module Struct = {
     {name: name, attributes: attrs, size: offset.contents}
   }
 
-  let addImpl = (self: t, name: nameRef) => {
+  let addImpl = (self: t, name: nameRef, isSelfMutable: bool) => {
     let _ = self.attributes->Js.Array2.push({
       name: name.contents.name,
+      mut: false,
       ty: name.contents.ty,
       offset: 0,
       size: 0,
-      impl: Some(name),
+      impl: Some((name, isSelfMutable)),
     })
   }
 }

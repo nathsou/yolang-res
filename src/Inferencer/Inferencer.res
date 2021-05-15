@@ -369,7 +369,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
           | Some({attributes}) =>
             switch attributes->Array.getBy(({name}) => name === attr) {
             | Some({ty: attrTy, impl}) => {
-                let attrTy = impl->Option.mapWithDefault(attrTy, f => f.contents.ty)
+                let attrTy = impl->Option.mapWithDefault(attrTy, ((f, _)) => f.contents.ty)
 
                 unify(substMono(sig1, tau), substMono(sig1, attrTy))->map(sig2 =>
                   substCompose(sig2, sig1)
@@ -461,7 +461,7 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
   | CoreFuncDecl(f, args, body) =>
     collectCoreExprTypeSubsts(
       env,
-      CoreFuncExpr(f.contents.ty, Some(f), args, body),
+      CoreFuncExpr(f.contents.ty, Some(f), args->Array.map(fst), body),
     )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig))
   | CoreGlobalDecl(x, _, init) =>
     collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
@@ -479,8 +479,13 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
           // rename the function
           f.contents.newName = renameStructImpl(typeName, f.contents.name)
 
+          let isSelfMutable = switch args->Array.get(0) {
+          | Some((_, mut)) => mut
+          | _ => false
+          }
+
           // add the function to the struct's signature
-          struct->Context.Struct.addImpl(f)
+          struct->Context.Struct.addImpl(f, isSelfMutable)
 
           // remove the first (self) argument
           let remainingArgs = args == [] ? [] : args->Array.sliceToEnd(1)
@@ -489,7 +494,7 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
 
           // add the first argument to the environment
           let gammaSelf = switch args->Array.get(0) {
-          | Some(arg) => {
+          | Some((arg, _)) => {
               arg.contents.ty = structTy
               gamma->Env.addMono(arg.contents.name, structTy)
             }
