@@ -9,15 +9,19 @@ impl MinMax {
     self.min = 0;
     self.max = 0;
   }
+
+  fn resetStatic(mut m) {
+    m.reset();
+  }
 }
 
 fn main() {
   mut m = MinMax {
-    min: 1789,
-    max: 1998
+    min: 17,
+    max: 22
   };
 
-  m.reset();
+  MinMax.resetStatic(m);
   
   m.min + m.max == 0
 }

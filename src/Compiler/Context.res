@@ -17,10 +17,13 @@ module Struct = {
     offset: int,
     ty: Types.monoTy,
     size: int,
+    // implemented functions behave like attributes to simplify the type inferencer
     impl: option<(nameRef, bool)>,
   }
 
-  type t = {name: string, attributes: array<attribute>, size: int}
+  type staticFunc = {name: nameRef}
+
+  type t = {name: string, attributes: array<attribute>, size: int, staticFuncs: array<staticFunc>}
 
   let show = ({name, attributes}: t) => {
     "struct " ++
@@ -56,10 +59,10 @@ module Struct = {
       offset := offset.contents + size
     })
 
-    {name: name, attributes: attrs, size: offset.contents}
+    {name: name, attributes: attrs, size: offset.contents, staticFuncs: []}
   }
 
-  let addImpl = (self: t, name: nameRef, isSelfMutable: bool) => {
+  let addImplementation = (self: t, name: nameRef, isSelfMutable: bool) => {
     let _ = self.attributes->Js.Array2.push({
       name: name.contents.name,
       mut: false,
@@ -67,6 +70,12 @@ module Struct = {
       offset: 0,
       size: 0,
       impl: Some((name, isSelfMutable)),
+    })
+  }
+
+  let addStaticFunc = (self: t, name: nameRef) => {
+    let _ = self.staticFuncs->Js.Array2.push({
+      name: name,
     })
   }
 }
@@ -130,13 +139,10 @@ let freshIdentifier = (~ty=None, name: string): nameRef => {
   nameRef
 }
 
-let getIdentifier = (name: string): nameRef => {
-  switch context.identifiers
+let getIdentifier = (name: string): option<nameRef> => {
+  context.identifiers
   ->ArrayUtils.getReverseIndexBy(n => n == name)
-  ->Option.flatMap(index => context.renaming->HashMap.Int.get(index)) {
-  | Some(id) => id
-  | None => Js.Exn.raiseError(`unbound identifier "${name}"`)
-  }
+  ->Option.flatMap(index => context.renaming->HashMap.Int.get(index))
 }
 
 let substNameRef = (s: Subst.t, n: nameRef): unit => {

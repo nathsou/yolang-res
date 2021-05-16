@@ -7,6 +7,11 @@ struct Array {
   capacity: u32,
 }
 
+struct Slice {
+  array: Array,
+  mut length: u32
+}
+
 impl Array {
   fn read(self, n) unsafe {
     *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>)

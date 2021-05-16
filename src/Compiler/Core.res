@@ -155,6 +155,7 @@ module CoreAst = {
   }
 
   exception UnexpectedDeclarationInImplBlock(decl)
+  exception UndeclaredIdentifer(string)
 
   let rec fromExpr = expr => {
     open Context
@@ -165,7 +166,15 @@ module CoreAst = {
     | Ast.ConstExpr(c) => CoreConstExpr(c)
     | UnaryOpExpr(op, b) => CoreUnaryOpExpr(tau(), op, fromExpr(b))
     | BinOpExpr(a, op, b) => CoreBinOpExpr(tau(), fromExpr(a), op, fromExpr(b))
-    | VarExpr(x) => CoreVarExpr(getIdentifier(x))
+    | VarExpr(x) =>
+      switch getIdentifier(x) {
+      | Some(id) => CoreVarExpr(id)
+      | None =>
+        switch Context.getStruct(x) {
+        | Some(_) => CoreVarExpr(Context.freshIdentifier(x))
+        | None => raise(UndeclaredIdentifer(x))
+        }
+      }
     | AssignmentExpr(lhs, rhs) => CoreAssignmentExpr(fromExpr(lhs), fromExpr(rhs))
     | FuncExpr(args, body) =>
       switch args {
@@ -237,7 +246,11 @@ module CoreAst = {
       }
     | Ast.GlobalDecl(x, mut, init) =>
       CoreGlobalDecl(Context.freshIdentifier(x), mut, fromExpr(init))
-    | Ast.StructDecl(name, attrs) => CoreStructDecl(name, attrs)
+    | Ast.StructDecl(name, attrs) => {
+        // declare this struct
+        Context.declareStruct(Context.Struct.make(name, attrs))
+        CoreStructDecl(name, attrs)
+      }
     | Ast.ImplDecl(typeName, decls) => {
         let funcs =
           decls

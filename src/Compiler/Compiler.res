@@ -1,46 +1,6 @@
 open Belt
 open Core
 
-module CompilerExn = {
-  exception InvalidTypeConversion(Types.monoTy)
-  exception InvalidFunctionSignature(Types.monoTy)
-  exception VariableNotFound(string)
-  exception EmptyFunctionStack
-  exception CannotReassignImmutableValue(string)
-  exception FunctionNotFound(string)
-  exception Unimplemented(string)
-  exception UnsupportedGlobalInitializer(CoreExpr.t)
-  exception InvalidTypeAssertion(Types.monoTy, Types.monoTy)
-  exception DerefUsedOutsideOfUnsafeBlock
-  exception UndeclaredStruct(string)
-  exception InvalidAttributeAccess(string, Types.monoTy)
-  exception StructTypeNotMatched(Types.monoTy)
-  exception AmibguousStruct(Types.Attributes.t, array<Context.Struct.t>)
-
-  let show = exn =>
-    switch exn {
-    | InvalidTypeConversion(ty) => `unsupported type: ${Types.showMonoTy(ty)}`
-    | InvalidFunctionSignature(ty) => `invalid function signature: ${Types.showMonoTy(ty)}`
-    | VariableNotFound(x) => `variable "${x}" not found`
-    | EmptyFunctionStack => "Function stack is empty"
-    | CannotReassignImmutableValue(x) => `cannot mutate "${x}" as it is behind an immutable binding`
-    | FunctionNotFound(f) => `no function named "${f}" found`
-    | Unimplemented(message) => `unimplemented: ${message}`
-    | UnsupportedGlobalInitializer(expr) => `unsupported global initializer: ${CoreExpr.show(expr)}`
-    | InvalidTypeAssertion(a, b) =>
-      `invalid type assertion from ${Types.showMonoTy(a)} to ${Types.showMonoTy(b)}`
-    | DerefUsedOutsideOfUnsafeBlock => `the deref operator can only be used in an unsafe block`
-    | Types.Size.UnkownTypeSize(ty) => `unknown type size: ${Types.showMonoTy(ty)}`
-    | UndeclaredStruct(name) => `undeclared struct "${name}"`
-    | InvalidAttributeAccess(attr, ty) =>
-      `${attr} does not exist for type "${Types.showMonoTy(ty)}"`
-    | StructTypeNotMatched(ty) => `No struct declaration matches type ${Types.showMonoTy(ty)}`
-    | AmibguousStruct(attrs, matches) =>
-      Inferencer.StructMatching.ambiguousMatchesError(attrs, matches)
-    | _ => "unexpected compiler exception"
-    }
-}
-
 module Local = {
   type t = {
     name: string,
@@ -558,6 +518,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       self->emit(Wasm.Inst.End)
     }
   | CoreAppExpr(_, lhs, args) => {
+      let callDirect = (funcIndex: int) => {
+        args->Array.forEach(arg => {
+          self->compileExpr(arg)
+        })
+
+        self->emit(Wasm.Inst.Call(funcIndex))
+      }
+
       let callIndirect = () => {
         args->Array.forEach(arg => {
           self->compileExpr(arg)
@@ -600,16 +568,49 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           }
         | _ => callIndirect()
         }
-      | CoreAttributeAccessExpr(_, structSelf, attr) => {
-          // check args mutability
-          switch self->getStructAttributeOffset(structSelf->CoreAst.typeOfExpr, attr) {
-          | Ok(StructImpl((func, _, _))) => checkArgsMutability(func)
-          | Ok(StructAttr(_)) => ()
-          | Error(err) => raise(err)
+      | CoreAttributeAccessExpr(_, lhs, attr) => {
+          let (isMethod, func, funcIndex) = switch lhs {
+          | CoreVarExpr(structName) => {
+              let structName = structName.contents.name
+              switch Context.getStruct(structName) {
+              | Some(_) =>
+                switch self->findFuncIndexByName(Inferencer.renameStructImpl(structName, attr)) {
+                | Some((func, funcIndex)) => (false, Some(func), Some(funcIndex))
+                | _ =>
+                  raise(
+                    CompilerExn.Unimplemented(
+                      `static function "${attr}" does not exists on struct ${structName}`,
+                    ),
+                  )
+                }
+              | _ => (true, None, None)
+              }
+            }
+          | _ => (true, None, None)
           }
 
-          self->compileExpr(structSelf)
-          callIndirect()
+          let func = switch func {
+          | Some(func) => Some(func)
+          | None =>
+            switch self->getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
+            | Ok(StructImpl((func, _, _))) => Some(func)
+            | Ok(StructAttr(_)) => None
+            | Error(err) => raise(err)
+            }
+          }
+
+          // check args mutability
+          func->Option.mapWithDefault((), checkArgsMutability)
+
+          // if this is a method, add self as the first argument
+          if isMethod {
+            self->compileExpr(lhs)
+          }
+
+          switch funcIndex {
+          | Some(idx) => callDirect(idx)
+          | None => callIndirect()
+          }
         }
       | _ => callIndirect()
       }
@@ -663,7 +664,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       attributes
       ->Array.zip(attrs)
       ->Array.forEach((({ty, mut, impl}, (_, expr))) => {
-        if mut {
+        if mut && ty->Types.isReferencedTy {
           switch self->findImmutableBinding(expr) {
           | Some(bindingName) => raise(CompilerExn.CannotReassignImmutableValue(bindingName))
           | _ => ()

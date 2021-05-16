@@ -148,7 +148,22 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       let x = x.contents
       switch env->Env.get(x.name) {
       | Some(ty) => unify(x.ty, Context.freshInstance(ty))
-      | None => Error(`unbound variable: "${x.name}"`)
+      | None =>
+        switch Context.getStruct(x.name) {
+        | Some(s) => {
+            let staticFuncs = TyStruct(
+              PartialStruct(
+                Types.Attributes.fromArray(
+                  s.staticFuncs->Array.map(({name}) => (name.contents.name, name.contents.ty)),
+                  Context.freshTyVarIndex(),
+                ),
+              ),
+            )
+
+            unify(x.ty, staticFuncs)
+          }
+        | None => Error(`unbound variable: "${x.name}"`)
+        }
       }
     }
   | CoreAssignmentExpr(lhs, rhs) => {
@@ -467,10 +482,9 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
     collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
     })
-  | CoreStructDecl(name, attrs) => {
-      Context.declareStruct(Context.Struct.make(name, attrs))
-      Ok((env, Subst.empty))
-    }
+  | CoreStructDecl(_, _) =>
+    // the struct was already declared in Core.fromDecl
+    Ok((env, Subst.empty))
   | CoreImplDecl(typeName, funcs) =>
     switch Context.getStruct(typeName) {
     | Some(struct) =>
@@ -479,33 +493,43 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
           // rename the function
           f.contents.newName = renameStructImpl(typeName, f.contents.name)
 
-          let isSelfMutable = switch args->Array.get(0) {
-          | Some((_, mut)) => mut
-          | _ => false
-          }
+          let (isMethod, isSelfMutable) =
+            args
+            ->Array.get(0)
+            ->Option.mapWithDefault((false, false), ((arg, mut)) =>
+              arg.contents.name == "self" ? (true, mut) : (false, false)
+            )
 
-          // add the function to the struct's signature
-          struct->Context.Struct.addImpl(f, isSelfMutable)
+          let (gamma, args) = if isMethod {
+            // add the method to the struct's signature
+            struct->Context.Struct.addImplementation(f, isSelfMutable)
 
-          // remove the first (self) argument
-          let remainingArgs = args == [] ? [] : args->Array.sliceToEnd(1)
+            // remove the first (self) argument
+            let remainingArgs = args == [] ? [] : args->Array.sliceToEnd(1)
 
-          let structTy = TyStruct(NamedStruct(typeName))
+            let structTy = TyStruct(NamedStruct(typeName))
 
-          // add the first argument to the environment
-          let gammaSelf = switch args->Array.get(0) {
-          | Some((arg, _)) => {
-              arg.contents.ty = structTy
-              gamma->Env.addMono(arg.contents.name, structTy)
+            // add the first argument to the environment
+            let gammaSelf = switch args->Array.get(0) {
+            | Some((arg, _)) => {
+                arg.contents.ty = structTy
+                gamma->Env.addMono(arg.contents.name, structTy)
+              }
+            | None => gamma
             }
-          | None => gamma
+
+            (gammaSelf, remainingArgs)
+          } else {
+            // static function
+            struct->Context.Struct.addStaticFunc(f)
+
+            (env, args)
           }
 
-          registerDecl(gammaSelf, CoreFuncDecl(f, remainingArgs, body))->Result.flatMap(((
-            gamma',
-            sig',
-          )) => {
+          registerDecl(gamma, CoreFuncDecl(f, args, body))->Result.flatMap(((gamma', sig')) => {
             let sig'' = substCompose(sig', sig)
+
+            // substitute the inferred type for f
             Context.substNameRef(sig'', f)
 
             // f is not visible in the global scope
