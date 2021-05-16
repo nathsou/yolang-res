@@ -1,0 +1,57 @@
+
+mut HEAP_HEAD = 65536;
+
+fn allocate(bytes) {
+  HEAP_HEAD = HEAP_HEAD + bytes
+}
+
+struct MinMax {
+  mut min: u32,
+  mut max: u32
+}
+
+struct Rc {
+  ref: MinMax,
+  mut refsCount: u32
+}
+
+impl Rc {
+  fn bump(mut self) {
+    self.refsCount = self.refsCount + 1;
+  }
+
+  fn drop(mut self) {
+    if self.refsCount > 1 {
+      self.refsCount = self.refsCount - 1;
+    } else {
+      // free
+    }
+  }
+}
+
+impl MinMax {
+  fn from(min, max) {
+    allocate(12);
+
+    Rc {
+      ref: MinMax {
+        min: min,
+        max: max
+      },
+      refsCount: 1
+    }
+  }
+
+  fn reset(mut self) {
+    self.min = 0;
+    self.max = 0;
+  }
+}
+
+fn main() {
+  mut m1 = MinMax.from(1789, 1998);
+  let res = (m1.ref.min + m1.ref.max, HEAP_HEAD, m1.refsCount);
+  m1.drop();
+
+  res
+}
