@@ -1,8 +1,14 @@
 
-let STACK_TOP = 1024;
-mut global2 = 22;
+struct MinMax {
+  min: u32,
+  max: u32
+}
+
+let m = MinMax {
+  min: 0,
+  max: 0
+};
 
 fn main() {
-  global2 = 11;
-  STACK_TOP * global2
+  m
 }

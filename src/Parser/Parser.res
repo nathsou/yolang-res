@@ -211,8 +211,6 @@ let lambda = alt(
   letIn,
 )
 
-let assignment = chainLeft(lambda, token(Symbol(Eq)), (a, _, b) => Ast.AssignmentExpr(a, b))
-
 let implicitStmts = keepBy(expr, expr =>
   switch expr {
   | Ast.IfExpr(_, _, _) => Some((true, Ast.ExprStmt(expr)))
@@ -238,7 +236,7 @@ block :=
       | _ => Ast.BlockExpr(ss, lastExpr, safety)
       }
     }),
-    assignment,
+    lambda,
   ).contents
 
 let structExpr = alt(
@@ -254,9 +252,11 @@ let structExpr = alt(
   block,
 )
 
+let assignment = chainLeft(structExpr, token(Symbol(Eq)), (a, _, b) => Ast.AssignmentExpr(a, b))
+
 let returnExpr = alt(
   then(token(Keyword(Keywords.Return)), optional(expr))->map(((_, ret)) => Ast.ReturnExpr(ret)),
-  structExpr,
+  assignment,
 )
 
 let typeAssertion = then(returnExpr, optional(then(token(Keyword(Keywords.As)), type_)))->map(((

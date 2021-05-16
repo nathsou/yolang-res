@@ -358,8 +358,22 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
             })
           })
 
-        res->map(((_, sig)) => sig)
+        // check that there are no extraneous attributes
+        let extraAttr = attrs->ArrayUtils.firstSomeBy(((attrName, _)) =>
+          if attributes->Array.some(attr => attr.name == attrName) {
+            None
+          } else {
+            Some(attrName)
+          }
+        )
+
+        switch extraAttr {
+        | Some(extraAttrName) =>
+          Error(`extraneous attribute: "${extraAttrName}" for struct "${name}"`)
+        | None => res->map(((_, sig)) => sig)
+        }
       }
+
     | None => Error(`undeclared struct "${name}"`)
     }
   | CoreAttributeAccessExpr(tau, lhs, attr) =>

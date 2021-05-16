@@ -855,26 +855,22 @@ module ElementSection = {
 module Global = {
   module Initializer = {
     @genType
-    type t = InitConstI32(int) | InitGetGlobal(int)
+    type t = array<Inst.t>
+
+    let fromInstructions = (instructions): t => instructions
 
     @genType
-    let encode = (init: t): Vec.t =>
-      Array.concat(
-        Inst.encode(
-          switch init {
-          | InitConstI32(n) => Inst.ConstI32(n)
-          | InitGetGlobal(idx) => Inst.GetGlobal(idx)
-          },
-        ),
-        Inst.encode(Inst.End),
-      )
+    let encode = (insts: t): Vec.t => {
+      Array.concat(Array.concatMany(insts->Array.map(Inst.encode)), Inst.encode(Inst.End))
+    }
 
     @genType
-    let show = init =>
-      switch init {
-      | InitConstI32(n) => Int.toString(n)
-      | InitGetGlobal(idx) => `global.get ${Int.toString(idx)}`
+    let show = insts => {
+      switch insts {
+      | [inst] => inst->Inst.show([], [])
+      | _ => "\n" ++ insts->Array.joinWith("\n", inst => "  " ++ inst->Inst.show([], [])) ++ "\nend"
       }
+    }
   }
 
   @genType

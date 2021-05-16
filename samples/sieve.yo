@@ -4,12 +4,6 @@ let SIZEOF_U32 = 4;
 struct Array {
   start: Ptr<u32>,
   mut length: u32,
-  capacity: u32,
-}
-
-struct Slice {
-  array: Array,
-  mut length: u32
 }
 
 impl Array {
@@ -79,13 +73,14 @@ impl Sieve {
   }
 }
 
+// right after the shadow stack
+let PRIMES_START = 64 * 1024;
+
 fn main() {
   mut sieve = Sieve {
     primes: Array {
-      // right after the shadow stack
-      start: 65536 as Ptr<u32>,
-      length: 0,
-      capacity: 100000
+      start: PRIMES_START as Ptr<u32>,
+      length: 0
     },
     current: 0
   };

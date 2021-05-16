@@ -154,24 +154,36 @@ module Func = {
 }
 
 module Global = {
+  // when an initializer is not a constant expression, the global
+  // is mutated once before the main function runs
+  type globalMutability = InternallyMutable | Mutable | Immutable
+
   type t = {
     name: string,
-    isMutable: bool,
+    mutability: globalMutability,
     ty: option<Wasm.ValueType.t>,
     index: int,
     init: Wasm.Global.Initializer.t,
   }
 
-  let make = (name, isMutable, ty, index, init): t => {
+  let make = (name, mutability, ty, index, init): t => {
     name: name,
-    isMutable: isMutable,
+    mutability: mutability,
     ty: ty,
     index: index,
     init: init,
   }
 
-  let toWasmGlobal = ({isMutable, ty, init}: t): option<Wasm.Global.t> => {
-    ty->Option.map(ty => Wasm.Global.make(~isMutable, ty, init))
+  let isMutable = (mutability: globalMutability): bool => {
+    switch mutability {
+    | InternallyMutable => false
+    | Immutable => false
+    | Mutable => true
+    }
+  }
+
+  let toWasmGlobal = ({mutability, ty, init}: t): option<Wasm.Global.t> => {
+    ty->Option.map(ty => Wasm.Global.make(~isMutable=mutability != Immutable, ty, init))
   }
 }
 
@@ -186,6 +198,7 @@ type t = {
   mutable scopeDepth: int,
   funcStack: MutableStack.t<Func.t>,
   globals: HashMap.String.t<Global.t>,
+  globalsInitializer: Func.t,
   stackTop: Global.t,
   blockStack: MutableStack.t<blockInfo>,
 }
@@ -269,9 +282,9 @@ let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool
 
 type varInfo = Local(Wasm.Func.Local.index, bool) | Global(Wasm.Global.index, bool)
 
-let declareGlobal = (self: t, name, isMutable: bool, ty, init): Wasm.Global.index => {
+let declareGlobal = (self: t, name, mutability, ty, init): Wasm.Global.index => {
   let index = self.globals->HashMap.String.size
-  let global = Global.make(name, isMutable, ty, index, init)
+  let global = Global.make(name, mutability, ty, index, init)
   self.globals->HashMap.String.set(name, global)
 
   index
@@ -285,7 +298,10 @@ let resolveVar = (self: t, name: string): option<varInfo> => {
   let f = self->getCurrentFuncExn
   switch f->Func.findLocal(name) {
   | Some((localIndex, isMutable)) => Some(Local(localIndex, isMutable))
-  | None => self->resolveGlobal(name)->Option.map(({index, isMutable}) => Global(index, isMutable))
+  | None =>
+    self
+    ->resolveGlobal(name)
+    ->Option.map(({index, mutability}) => Global(index, mutability->Global.isMutable))
   }
 }
 
@@ -785,22 +801,49 @@ and compileFuncDecl = (
   funcIdx
 }
 
+and compileExprIsolated = (self: t, expr: Core.CoreExpr.t): Func.t => {
+  let topMostFunc = Func.make("__isolated__", [], expr->CoreAst.typeOfExpr)
+  let _ = self.funcStack->MutableStack.push(topMostFunc)
+  self->compileExpr(expr)
+  let _ = self.funcStack->MutableStack.pop
+  topMostFunc
+}
+
 and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   switch decl {
   | CoreFuncDecl(f, args, body) => {
       let _ = self->compileFuncDecl(f, args, body)
     }
   | CoreGlobalDecl(x, mut, init) => {
-      let init = switch init {
-      | CoreConstExpr(c) =>
-        switch encodeConstExpr(c) {
-        | Some(Wasm.Inst.ConstI32(n)) => Wasm.Global.Initializer.InitConstI32(n)
-        | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
-        }
-      | _ => raise(CompilerExn.UnsupportedGlobalInitializer(init))
-      }
+      // never release the allocated stack bytes since we are in the global scope
+      self->beginScope(false)
+      let {instructions} = self->compileExprIsolated(init)
 
-      let _ = self->declareGlobal(x.contents.name, mut, Some(Wasm.ValueType.I32), init)
+      switch instructions {
+      | [Wasm.Inst.ConstI32(n)] => {
+          let _ =
+            self->declareGlobal(
+              x.contents.name,
+              mut ? Global.Mutable : Global.Immutable,
+              Some(Wasm.ValueType.I32),
+              Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(n)]),
+            )
+        }
+      | _ => {
+          let _ = self.globalsInitializer.instructions->Js.Array2.pushMany(instructions)
+
+          let globalIndex =
+            self->declareGlobal(
+              x.contents.name,
+              Global.InternallyMutable,
+              Some(Wasm.ValueType.I32),
+              Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(0)]),
+            )
+
+          let _ =
+            self.globalsInitializer.instructions->Js.Array2.push(Wasm.Inst.SetGlobal(globalIndex))
+        }
+      }
     }
   | CoreStructDecl(_) => () // struct declarations only affect types
   | CoreImplDecl(_, funcs) =>
@@ -817,12 +860,16 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     scopeDepth: 0,
     funcStack: MutableStack.make(),
     globals: HashMap.String.make(~hintSize=1),
+    // wasm globals can only be constant expressions
+    // so if a global initializer is more complex, add the initialization code
+    // to the globalsInitializer function which gets called in the main function
+    globalsInitializer: Func.make("__initGlobals__", [], Types.unitTy),
     stackTop: Global.make(
       "__STACK_TOP__",
-      true,
+      Global.Mutable,
       Some(Wasm.ValueType.I32),
       0,
-      Wasm.Global.Initializer.InitConstI32(64 * 1024 - 1),
+      Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(64 * 1024 - 1)]),
     ),
     blockStack: MutableStack.make(),
   }
@@ -858,8 +905,21 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
       Wasm.Table.make(Wasm.ReferenceType.FuncRef, Wasm.Limits.makeExact(self.funcs->Array.length)),
     )
 
+    let globalsInitializerFuncIndex = self.funcs->Array.length
+    let isGlobalInitializerEmpty = self.globalsInitializer.instructions->Array.length == 0
+
+    if !isGlobalInitializerEmpty {
+      let _ = self.globalsInitializer.instructions->Js.Array2.push(Wasm.Inst.End)
+      let _ = self.funcs->Js.Array2.push(self.globalsInitializer)
+    }
+
     // compile functions
     self.funcs->Array.forEach(f => {
+      if f.name == "main" && !isGlobalInitializerEmpty {
+        // call the globals initializer before any other code
+        let _ = f.instructions->Js.Array2.unshift(Wasm.Inst.Call(globalsInitializerFuncIndex))
+      }
+
       let (_, sig, body) = f->Func.toWasmFunc
       let _ = self.mod->Wasm.Module.addExportedFunc(f.name, sig, body)
     })
