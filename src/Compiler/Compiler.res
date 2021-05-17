@@ -555,12 +555,17 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->emit(Wasm.Inst.CallIndirect(funcSigIndex, 0))
       }
 
-      let checkArgsMutability = ({params}: Func.t) => {
+      let checkArgsMutability = ({params}: Func.t, selfArg: option<CoreExpr.t>) => {
+        let args = switch selfArg {
+        | Some(self) => Array.concat([self], args)
+        | _ => args
+        }
+
         args
         ->Array.zip(params)
-        ->Array.forEach(((arg, (argName, _, mut))) => {
-          // if the argument is mutable, make sure the given value is under a mutable binding
-          if mut && self->findImmutableBinding(arg)->Option.isSome {
+        ->Array.forEach(((arg, (argName, ty, mut))) => {
+          // if the argument is mutable reference, make sure the given value is under a mutable binding
+          if mut && ty->Types.isReferencedTy && self->findImmutableBinding(arg)->Option.isSome {
             raise(CompilerExn.CannotReassignImmutableValue(argName))
           }
         })
@@ -572,7 +577,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         | None =>
           switch self->findFuncIndexByName(f.contents.newName) {
           | Some((func, idx)) => {
-              checkArgsMutability(func)
+              checkArgsMutability(func, None)
 
               args->Array.forEach(arg => {
                 self->compileExpr(arg)
@@ -616,7 +621,14 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           }
 
           // check args mutability
-          func->Option.mapWithDefault((), checkArgsMutability)
+          func->Option.mapWithDefault((), func => {
+            let selfArg = if isMethod {
+              Some(lhs)
+            } else {
+              None
+            }
+            checkArgsMutability(func, selfArg)
+          })
 
           // if this is a method, add self as the first argument
           if isMethod {
@@ -655,7 +667,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->emit(Wasm.Inst.ConstI32(funcIndex))
     }
-  | CoreTypeAssertion(expr, originalTy, assertedTy) => {
+  | CoreTypeAssertionExpr(expr, originalTy, assertedTy) => {
       open Types
 
       switch (originalTy, assertedTy) {
@@ -781,13 +793,15 @@ and compileFuncDecl = (
   args: array<(Context.nameRef, bool)>,
   body,
 ): Wasm.Func.index => {
-  let args = args->Array.map(((x, mut)) => (
-    x.contents.name,
-    x.contents.ty,
-    // an argument can be reassigned in the body of a function
-    // if it was marked as mutable or if it is not a referenced type
-    mut || !(x.contents.ty->Types.isReferencedTy),
-  ))
+  let args = args->Array.map(((x, mut)) => {
+    (
+      x.contents.name,
+      x.contents.ty,
+      // an argument can be reassigned in the body of a function
+      // if it was marked as mutable or if it is not a referenced type
+      mut || !(x.contents.ty->Types.isReferencedTy),
+    )
+  })
   let func = Func.make(f.contents.newName, args, CoreExpr.typeOf(body))
 
   let funcIdx = self.funcs->Js.Array2.push(func) - 1
@@ -835,7 +849,7 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
           let globalIndex =
             self->declareGlobal(
               x.contents.name,
-              Global.InternallyMutable,
+              mut ? Global.Mutable : Global.InternallyMutable,
               Some(Wasm.ValueType.I32),
               Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(0)]),
             )

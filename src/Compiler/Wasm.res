@@ -446,6 +446,7 @@ module Func = {
       | ([_], [_]) => `${argsFmt} -> ${retsFmt}`
       | ([_], []) => `${argsFmt} -> ()`
       | (_, []) => `(${argsFmt}) -> ()`
+      | (_, [_]) => `(${argsFmt}) -> ${retsFmt}`
       | _ => `(${argsFmt}) -> (${retsFmt})`
       }
     }

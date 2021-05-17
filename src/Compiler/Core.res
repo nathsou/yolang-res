@@ -16,7 +16,7 @@ module CoreAst = {
     | CoreIfExpr(monoTy, expr, expr, expr)
     | CoreWhileExpr(expr, expr)
     | CoreReturnExpr(option<expr>)
-    | CoreTypeAssertion(expr, Types.monoTy, Types.monoTy)
+    | CoreTypeAssertionExpr(expr, Types.monoTy, Types.monoTy)
     | CoreTupleExpr(array<expr>)
     | CoreStructExpr(string, array<(string, expr)>)
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
@@ -46,7 +46,7 @@ module CoreAst = {
     | CoreIfExpr(tau, _, _, _) => tau
     | CoreWhileExpr(_, _) => unitTy
     | CoreReturnExpr(expr) => expr->Option.mapWithDefault(unitTy, typeOfExpr)
-    | CoreTypeAssertion(_, _, assertedTy) => assertedTy
+    | CoreTypeAssertionExpr(_, _, assertedTy) => assertedTy
     | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
     | CoreStructExpr(name, _) => TyStruct(NamedStruct(name))
     | CoreAttributeAccessExpr(tau, _, _) => tau
@@ -98,7 +98,7 @@ module CoreAst = {
     | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
     | CoreReturnExpr(ret) =>
       "return " ++ withType(typeOfExpr(expr), ret->Option.mapWithDefault("", showExpr(~subst)))
-    | CoreTypeAssertion(expr, _, assertedTy) =>
+    | CoreTypeAssertionExpr(expr, _, assertedTy) =>
       `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
     | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", showExpr(~subst)) ++ ")"
     | CoreStructExpr(name, attrs) =>
@@ -209,7 +209,8 @@ module CoreAst = {
       )
     | WhileExpr(cond, body) => CoreWhileExpr(fromExpr(cond), fromExpr(body))
     | ReturnExpr(expr) => CoreReturnExpr(expr->Option.map(fromExpr))
-    | TypeAssertion(expr, assertedTy) => CoreTypeAssertion(fromExpr(expr), tau(), assertedTy)
+    | TypeAssertionExpr(expr, assertedTy) =>
+      CoreTypeAssertionExpr(fromExpr(expr), tau(), assertedTy)
     | TupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(fromExpr))
     | StructExpr(name, attrs) =>
       CoreStructExpr(name, attrs->Array.map(((attr, val)) => (attr, fromExpr(val))))
@@ -284,8 +285,8 @@ module CoreAst = {
     | CoreIfExpr(tau, cond, thenE, elseE) => CoreIfExpr(subst(tau), go(cond), go(thenE), go(elseE))
     | CoreWhileExpr(cond, body) => CoreWhileExpr(go(cond), go(body))
     | CoreReturnExpr(expr) => CoreReturnExpr(expr->Option.map(go))
-    | CoreTypeAssertion(expr, originalTy, assertedTy) =>
-      CoreTypeAssertion(go(expr), subst(originalTy), subst(assertedTy))
+    | CoreTypeAssertionExpr(expr, originalTy, assertedTy) =>
+      CoreTypeAssertionExpr(go(expr), subst(originalTy), subst(assertedTy))
     | CoreTupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(go))
     | CoreStructExpr(name, attrs) =>
       // reorder attributes to match the struct declaration

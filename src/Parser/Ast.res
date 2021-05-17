@@ -68,7 +68,7 @@ module Ast = {
     | IfExpr(expr, expr, option<expr>)
     | WhileExpr(expr, expr)
     | ReturnExpr(option<expr>)
-    | TypeAssertion(expr, Types.monoTy)
+    | TypeAssertionExpr(expr, Types.monoTy)
     | TupleExpr(array<expr>)
     | StructExpr(string, array<(string, expr)>)
     | AttributeAccessExpr(expr, string)
@@ -111,7 +111,7 @@ module Ast = {
       )->Array.joinWith(";\n", str => `  ${str}`) ++ "}\n}"
     | WhileExpr(cond, body) => `while ${showExpr(cond)} ${showExpr(body)}`
     | ReturnExpr(ret) => "return " ++ ret->Option.mapWithDefault("", showExpr)
-    | TypeAssertion(e, ty) => `${showExpr(e)} as ${Types.showMonoTy(ty)}`
+    | TypeAssertionExpr(e, ty) => `${showExpr(e)} as ${Types.showMonoTy(ty)}`
     | TupleExpr(exprs) => `(${exprs->Array.joinWith(", ", showExpr)})`
     | StructExpr(name, attrs) =>
       name ++

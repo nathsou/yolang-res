@@ -1,0 +1,76 @@
+
+struct BumpAllocator {
+  mut head: u32
+}
+
+impl BumpAllocator {
+  fn allocate(mut self, bytes) {
+    let addr = self.head as Ptr<u32>;
+    self.head = self.head + bytes;
+    addr
+  }
+  
+  // do nothing!
+  fn free(mut self, addr) { }
+}
+
+mut allocator = BumpAllocator { head: 64 * 1024 };
+
+struct Vec {
+  mut start: Ptr<u32>,
+  mut length: u32,
+  mut capacity: u32 
+}
+
+impl Vec {
+  fn grow(mut self) unsafe {
+    let newCap = if self.capacity == 0 { 8 } else { self.capacity * 2 };
+    let newStart = allocator.allocate(newCap);
+
+    // copy the data from the old array to the new one
+    mut i = 0;
+    while i < self.length {
+      *(((newStart as u32) + i) as Ptr<u32>) = *(((self.start as u32) + i) as Ptr<u32>);
+      i = i + 1;
+    }
+
+    allocator.free(self.start);
+    self.start = newStart;
+    self.capacity = newCap;
+  }
+
+  fn push(mut self, val) unsafe {
+    if self.length + 1 > self.capacity {
+      self.grow();
+    }
+
+    *(((self.start as u32) + self.length) as Ptr<u32>) = val;
+    self.length = self.length + 1;
+  }
+
+  fn pop(mut self) unsafe {
+    if self.length > 0 {
+      self.length = self.length - 1;
+      *(((self.start as u32) + self.length) as Ptr<u32>)
+    } else {
+      // until we have Option<T>
+      4294967295 // -1
+    }
+  }
+}
+
+fn main() {
+  mut vec = Vec {
+    start: 0 as Ptr<u32>,
+    length: 0,
+    capacity: 0
+  };
+
+  mut i = 0;
+  while i < 1000 {
+    vec.push(i);
+    i = i + 1;
+  }
+
+  (vec.length, vec.capacity)
+}

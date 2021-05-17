@@ -264,7 +264,7 @@ let typeAssertion = then(returnExpr, optional(then(token(Keyword(Keywords.As)), 
   assertion,
 )) =>
   switch assertion {
-  | Some((_, ty)) => Ast.TypeAssertion(e, ty)
+  | Some((_, ty)) => Ast.TypeAssertionExpr(e, ty)
   | None => e
   }
 )
