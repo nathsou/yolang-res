@@ -16,6 +16,8 @@ impl BumpAllocator {
 
 mut allocator = BumpAllocator { head: 64 * 1024 };
 
+let SIZEOF_U32 = 4;
+
 struct Vec {
   mut start: Ptr<u32>,
   mut length: u32,
@@ -23,14 +25,22 @@ struct Vec {
 }
 
 impl Vec {
+  fn read(self, index) unsafe {
+    *(((self.start as u32) + (index * SIZEOF_U32)) as Ptr<u32>)
+  }
+
+  fn write(mut self, index, value) unsafe {
+    *(((self.start as u32) + (index * SIZEOF_U32)) as Ptr<u32>) = value;
+  }
+
   fn grow(mut self) unsafe {
     let newCap = if self.capacity == 0 { 8 } else { self.capacity * 2 };
-    let newStart = allocator.allocate(newCap);
+    let newStart = allocator.allocate(newCap * SIZEOF_U32);
 
     // copy the data from the old array to the new one
     mut i = 0;
     while i < self.length {
-      *(((newStart as u32) + i) as Ptr<u32>) = *(((self.start as u32) + i) as Ptr<u32>);
+      *(((newStart as u32) + (i * SIZEOF_U32)) as Ptr<u32>) = self.read(i);
       i = i + 1;
     }
 
@@ -44,14 +54,14 @@ impl Vec {
       self.grow();
     }
 
-    *(((self.start as u32) + self.length) as Ptr<u32>) = val;
+    self.write(self.length, val);
     self.length = self.length + 1;
   }
 
   fn pop(mut self) unsafe {
     if self.length > 0 {
       self.length = self.length - 1;
-      *(((self.start as u32) + self.length) as Ptr<u32>)
+      self.read(self.length)
     } else {
       // until we have Option<T>
       4294967295 // -1
@@ -72,5 +82,5 @@ fn main() {
     i = i + 1;
   }
 
-  (vec.length, vec.capacity)
+  (vec.length, vec.capacity, vec.read(723))
 }
