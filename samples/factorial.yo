@@ -1,6 +1,6 @@
 
 fn fact(n) {
-  let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) } in
+  let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) };
   aux(n, 1)
 }
 

@@ -5,6 +5,7 @@ let compile = (input: string): result<(Wasm.Module.t, Js.Typed_array.Uint8Array.
   try {
     Parser.parse(input)->Result.flatMap(prog => {
       let coreProg = prog->Array.map(Core.CoreDecl.from)
+      // coreProg->Array.joinWith("\n\n", core => core->Core.CoreDecl.show)->Js.log
 
       Inferencer.infer(coreProg)->Result.flatMap(((_, subst)) => {
         Context.substIdentifiers(subst)

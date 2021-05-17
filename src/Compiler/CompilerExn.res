@@ -36,5 +36,6 @@ let show = exn =>
   | Core.CoreAst.UndeclaredIdentifer(name) => `identifier "${name}" not found`
   | Core.CoreAst.UnexpectedDeclarationInImplBlock(decl) =>
     `unexpected declaration in impl block: ${Core.CoreDecl.show(decl)}`
+  | Core.CoreAst.UnreachableLetStmt => "unreachable: let statement found in Core.fromStmt"
   | _ => "unexpected compiler exception"
   }

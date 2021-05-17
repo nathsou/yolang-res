@@ -354,6 +354,10 @@ let getStructAttributeOffset = (self: t, structTy: Types.monoTy, attr: string): 
   }
 }
 
+let freshLambdaName = (self: t): Context.nameRef => {
+  Context.freshIdentifier("__lambda" ++ Int.toString(self.funcs->Array.length) ++ "__")
+}
+
 let rec findImmutableBinding = (self: t, expr: CoreExpr.t): option<string> => {
   switch expr {
   | CoreVarExpr(x) =>
@@ -446,11 +450,11 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->emit(Wasm.Inst.End)
     }
-  | CoreLetInExpr(_, x, valExpr, inExpr) => {
+  | CoreLetInExpr(_, mut, x, valExpr, inExpr) => {
       let x = x.contents
       if !(valExpr->CoreAst.typeOfExpr->Types.Size.isZeroSizedType) {
         self->compileExpr(valExpr)
-        self->declareLocalVar(x.name, x.ty, ~isMutable=false)
+        self->declareLocalVar(x.name, x.ty, ~isMutable=mut)
       }
       self->compileExpr(inExpr)
     }
@@ -651,17 +655,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       self->emit(Wasm.Inst.Return)
     }
-  | CoreFuncExpr(_, originalName, args, body) => {
-      let name = Context.freshIdentifier(
-        "__lambda" ++ Int.toString(self.funcs->Array.length) ++ "__",
-      )
-
-      switch originalName {
-      | Some(x) =>
-        // renaming ${x.contents.name} to ${name.contents.name}
-        x.contents.newName = name.contents.name
-      | None => ()
-      }
+  | CoreFuncExpr(_, args, body) => {
+      let name = self->freshLambdaName
 
       let funcIndex = self->compileFuncDecl(name, args->Array.map(x => (x, false)), body)
 
@@ -762,6 +757,15 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       }
     | Error(err) => raise(err)
     }
+  | CoreLetRecInExpr(_, f, x, body, inExpr) => {
+      let newName = self->freshLambdaName
+
+      f.contents.newName = newName.contents.name
+
+      let _ = self->compileFuncDecl(newName, x->Array.map(x => (x, false)), body)
+
+      self->compileExpr(inExpr)
+    }
   }
 }
 
@@ -777,12 +781,6 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
       ->Array.forEach(_ => {
         self->emit(Wasm.Inst.Drop)
       })
-    }
-  | CoreLetStmt(x, isMutable, rhs) =>
-    self->compileExpr(rhs)
-
-    if !(rhs->CoreAst.typeOfExpr->Types.Size.isZeroSizedType) {
-      self->declareLocalVar(x.contents.name, x.contents.ty, ~isMutable)
     }
   }
 }

@@ -40,54 +40,6 @@ let unaryOpTy = (op: Ast.UnaryOp.t): polyTy => {
   }
 }
 
-// rewrite
-// { let a = 3; let b = 7; a * b }
-// into
-// let a = 3 in let b = 7 in a * b
-let rec rewriteExpr = expr => {
-  open CoreAst
-
-  switch expr {
-  | CoreBlockExpr(tau, stmts, lastExpr, safety) => {
-      let rec aux = stmts =>
-        switch stmts {
-        | list{CoreLetStmt(x, _, e), ...tl} =>
-          Some(
-            CoreLetInExpr(
-              tau,
-              x,
-              rewriteExpr(e),
-              aux(tl)->Option.mapWithDefault(CoreConstExpr(Ast.Const.UnitConst), x => x),
-            ),
-          )
-        | list{stmt, ...tl} => Some(CoreBlockExpr(tau, [rewriteStmt(stmt)], aux(tl), safety))
-        | list{} => lastExpr->Option.map(rewriteExpr)
-        }
-
-      CoreBlockExpr(tau, [], aux(stmts->List.fromArray), safety)
-    }
-  | _ => expr
-  }
-}
-
-and rewriteStmt = stmt =>
-  switch stmt {
-  | CoreExprStmt(expr) => expr->rewriteExpr->CoreExprStmt
-  | CoreLetStmt(x, mut, rhs) => CoreLetStmt(x, mut, rhs->rewriteExpr)
-  }
-
-and rewriteDecl = decl =>
-  switch decl {
-  | CoreAst.CoreFuncDecl(f, args, body) => CoreAst.CoreFuncDecl(f, args, rewriteExpr(body))
-  | CoreAst.CoreGlobalDecl(x, mut, init) => CoreAst.CoreGlobalDecl(x, mut, rewriteExpr(init))
-  | CoreAst.CoreStructDecl(_) => decl
-  | CoreAst.CoreImplDecl(typeName, funcs) =>
-    CoreAst.CoreImplDecl(
-      typeName,
-      funcs->Array.map(((f, args, body)) => (f, args, rewriteExpr(body))),
-    )
-  }
-
 module StructMatching = {
   type t = NoMatch | OneMatch(Context.Struct.t) | MultipleMatches(array<Context.Struct.t>)
 
@@ -126,7 +78,30 @@ module StructMatching = {
 // function bodies using 'return' expressions
 let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
 
-let rec collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: monoTy): result<
+let rec collectFuncTypeSubstsWith = (env: Env.t, args: array<Context.nameRef>, body, tau) => {
+  let tauRet = CoreExpr.typeOf(body)
+  funcRetTyStack->MutableStack.push(tauRet)
+
+  let gammaArgs =
+    args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
+
+  let fTy = funTy(args->Array.map(x => x.contents.ty), tauRet)
+
+  collectCoreExprTypeSubstsWith(gammaArgs, body, tauRet)->Result.flatMap(sig => {
+    let sigFty = substMono(sig, fTy)
+    let sigTau = substMono(sig, tau)
+    let sigGamma = substEnv(sig, env)
+    let sigFtyGen = generalizeTy(sigGamma, sigFty)
+    unify(sigTau, sigFty)->Result.map(sig2 => {
+      let _ = funcRetTyStack->MutableStack.pop
+      let sig21 = substCompose(sig2, sig)
+
+      (sig21, sig2->substMono(sigTau), sig2->substPoly(sigFtyGen))
+    })
+  })
+}
+
+and collectCoreExprTypeSubstsWith = (env: Env.t, expr: CoreExpr.t, tau: monoTy): result<
   Subst.t,
   string,
 > => {
@@ -223,7 +198,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
         }
       })
     }
-  | CoreLetInExpr(tau, x, e1, e2) => {
+  | CoreLetInExpr(tau, _mut, x, e1, e2) => {
       let x = x.contents
       let tau1 = CoreExpr.typeOf(e1)
       collectCoreExprTypeSubsts(env, e1)->flatMap(sig1 => {
@@ -237,6 +212,33 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
           unify(substMono(sig21, tau1), substMono(sig21, x.ty))->map(sig3 =>
             substCompose(sig3, sig21)
           )
+        })
+      })
+    }
+  | CoreLetRecInExpr(tau, f, args, body, inExpr) => {
+      let f = f.contents
+      let tauBody = CoreExpr.typeOf(body)
+
+      funcRetTyStack->MutableStack.push(tauBody)
+
+      let fTy = funTy(args->Array.map(x => x.contents.ty), tauBody)
+
+      let gammaArgs =
+        args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
+      let gammaFX = gammaArgs->Env.addMono(f.name, fTy)
+
+      collectCoreExprTypeSubstsWith(gammaFX, body, tauBody)->flatMap(sig1 => {
+        let sig1Gamma = sig1->substEnv(gammaFX)
+        let sig1FTy = sig1->substMono(fTy)
+        let sig1Tau = sig1->substMono(tau)
+        let gammaFGen = sig1Gamma->Env.add(f.name, sig1Gamma->generalizeTy(sig1FTy))
+        collectCoreExprTypeSubstsWith(gammaFGen, inExpr, sig1Tau)->flatMap(sig2 => {
+          let sig21 = substCompose(sig2, sig1)
+
+          unify(f.ty, substMono(sig2, sig1FTy))->map(sig3 => {
+            let _ = funcRetTyStack->MutableStack.pop
+            substCompose(sig3, sig21)
+          })
         })
       })
     }
@@ -254,37 +256,8 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       })
     })
 
-  | CoreFuncExpr(tau, name, args, body) => {
-      let tauRet = CoreExpr.typeOf(body)
-      funcRetTyStack->MutableStack.push(tauRet)
-      let gammaArgs =
-        args->Array.reduce(env, (acc, x) => acc->Env.addMono(x.contents.name, x.contents.ty))
-      let fTy = funTy(args->Array.map(x => x.contents.ty), tauRet)
-      let gammaFArgs =
-        name->Option.mapWithDefault(gammaArgs, f =>
-          gammaArgs->Env.add(f.contents.name, polyOf(fTy))
-        )
-      collectCoreExprTypeSubstsWith(gammaFArgs, body, tauRet)->flatMap(sig => {
-        let sigFty = substMono(sig, fTy)
-        let sigTau = substMono(sig, tau)
-        // let sigGamma = substEnv(sig, env)
-        // let sigFtyGen = generalizeTy(sigGamma, sigFty)
-        unify(sigTau, sigFty)->flatMap(sig2 => {
-          let sig21 = substCompose(sig2, sig)
-
-          let _ = funcRetTyStack->MutableStack.pop
-
-          Ok(sig21)
-          // TODO: handle polymorphism
-          // switch name {
-          //   | Some((_, fTy)) => unify(substMono(sig21, fTy), substPoly(sig2, sigFtyGen))->map(sig3 => {
-          //     substCompose(sig3, sig21)
-          //   })
-          //   | None => Ok(sig21)
-          // }
-        })
-      })
-    }
+  | CoreFuncExpr(tau, args, body) =>
+    collectFuncTypeSubstsWith(env, args, body, tau)->map(((sig, _, _)) => sig)
   | CoreAppExpr(tau, lhs, args) => {
       let argsTy = args->Array.map(CoreExpr.typeOf)
       let fTy = funTy(argsTy, tau)
@@ -470,8 +443,6 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
 and collectCoreStmtTypeSubsts = (env: Env.t, stmt: CoreStmt.t): result<Subst.t, string> => {
   switch stmt {
   | CoreExprStmt(expr) => collectCoreExprTypeSubsts(env, expr)
-  | CoreLetStmt(_, _, _) =>
-    Error(`CoreLetStmt should have been rewritten to CoreLetIn in the inferencer`)
   }
 }
 
@@ -483,16 +454,21 @@ let inferCoreExprType = expr => {
 }
 
 let renameStructImpl = (structName: string, f: string): string => {
-  `impl_${structName}_${f}`
+  `${structName}_${f}`
 }
 
 let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
   switch decl {
   | CoreFuncDecl(f, args, body) =>
-    collectCoreExprTypeSubsts(
-      env,
-      CoreFuncExpr(f.contents.ty, Some(f), args->Array.map(fst), body),
-    )->Result.map(sig => (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig))
+    collectFuncTypeSubstsWith(env, args->Array.map(fst), body, f.contents.ty)->Result.map(((
+      sig,
+      _fTy,
+      _fTyGen,
+    )) => {
+      // Js.log(f.contents.newName ++ ": " ++ fTy->showMonoTy ++ ", " ++ fTyGen->showPolyTy)
+
+      (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig)
+    })
   | CoreGlobalDecl(x, _, init) =>
     collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
@@ -561,9 +537,7 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
 let infer = (prog: array<CoreDecl.t>): result<(Env.t, Subst.t), string> => {
   funcRetTyStack->MutableStack.clear
 
-  prog
-  ->Array.map(rewriteDecl)
-  ->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
+  prog->Array.reduce(Ok((Env.empty, Subst.empty)), (acc, decl) => {
     acc->Result.flatMap(((envn, sign)) =>
       registerDecl(envn, decl)->Result.map(((env, sig)) => (env, substCompose(sig, sign)))
     )

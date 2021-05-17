@@ -9,8 +9,9 @@ module CoreAst = {
     | CoreUnaryOpExpr(monoTy, UnaryOp.t, expr)
     | CoreVarExpr(Context.nameRef)
     | CoreAssignmentExpr(expr, expr)
-    | CoreFuncExpr(monoTy, option<Context.nameRef>, array<Context.nameRef>, expr)
-    | CoreLetInExpr(monoTy, Context.nameRef, expr, expr)
+    | CoreFuncExpr(monoTy, array<Context.nameRef>, expr)
+    | CoreLetInExpr(monoTy, bool, Context.nameRef, expr, expr)
+    | CoreLetRecInExpr(monoTy, Context.nameRef, array<Context.nameRef>, expr, expr)
     | CoreAppExpr(monoTy, expr, array<expr>)
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>, blockSafety)
     | CoreIfExpr(monoTy, expr, expr, expr)
@@ -20,7 +21,7 @@ module CoreAst = {
     | CoreTupleExpr(array<expr>)
     | CoreStructExpr(string, array<(string, expr)>)
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
-  and stmt = CoreLetStmt(Context.nameRef, bool, expr) | CoreExprStmt(expr)
+  and stmt = CoreExprStmt(expr)
   and decl =
     | CoreFuncDecl(Context.nameRef, array<(Context.nameRef, bool)>, expr)
     | CoreGlobalDecl(Context.nameRef, bool, expr)
@@ -39,8 +40,9 @@ module CoreAst = {
     | CoreBinOpExpr(tau, _, _, _) => tau
     | CoreVarExpr(id) => id.contents.ty
     | CoreAssignmentExpr(_, _) => unitTy
-    | CoreFuncExpr(tau, _, _, _) => tau
-    | CoreLetInExpr(tau, _, _, _) => tau
+    | CoreFuncExpr(tau, _, _) => tau
+    | CoreLetInExpr(tau, _, _, _, _) => tau
+    | CoreLetRecInExpr(tau, _, _, _, _) => tau
     | CoreAppExpr(tau, _, _) => tau
     | CoreBlockExpr(tau, _, _, _) => tau
     | CoreIfExpr(tau, _, _, _) => tau
@@ -56,7 +58,6 @@ module CoreAst = {
   let typeOfStmt = (stmt: stmt): monoTy => {
     switch stmt {
     | CoreExprStmt(expr) => typeOfExpr(expr)
-    | CoreLetStmt(_, _, _) => unitTy
     }
   }
 
@@ -76,10 +77,20 @@ module CoreAst = {
     | CoreUnaryOpExpr(tau, op, expr) => withType(tau, `(${UnaryOp.show(op)}${show(expr)})`)
     | CoreVarExpr(id) => withType(id.contents.ty, id.contents.name)
     | CoreAssignmentExpr(lhs, rhs) => withType(typeOfExpr(rhs), `${show(lhs)} = ${show(rhs)}`)
-    | CoreFuncExpr(tau, _, args, body) =>
+    | CoreFuncExpr(tau, args, body) =>
       withType(tau, `(${args->Array.joinWith(", ", x => x.contents.name)}) -> ${show(body)}`)
-    | CoreLetInExpr(tau, x, valExpr, inExpr) =>
-      withType(tau, `let ${x.contents.name} = ${show(valExpr)} in\n${show(inExpr)}`)
+    | CoreLetInExpr(tau, mut, x, valExpr, inExpr) =>
+      withType(
+        tau,
+        `let ${mut ? "mut" : ""} ${x.contents.name} = ${show(valExpr)} in\n${show(inExpr)}`,
+      )
+    | CoreLetRecInExpr(tau, f, args, valExpr, inExpr) =>
+      withType(
+        tau,
+        `let rec ${f.contents.name} (${args->Array.joinWith(", ", x => x.contents.name)}) = ${show(
+            valExpr,
+          )} in\n${show(inExpr)}`,
+      )
     | CoreAppExpr(tau, f, args) =>
       withType(tau, `(${show(f)})(${args->Array.joinWith(", ", show)})`)
     | CoreIfExpr(tau, cond, thenE, elseE) =>
@@ -111,8 +122,6 @@ module CoreAst = {
 
   and showStmt = (~subst=None, stmt) =>
     switch stmt {
-    | CoreLetStmt(x, mut, rhs) =>
-      `${mut ? "mut" : "let"} ${x.contents.name} = ${showExpr(rhs, ~subst)}`
     | CoreExprStmt(expr) => showExpr(expr, ~subst)
     }
 
@@ -156,8 +165,23 @@ module CoreAst = {
 
   exception UnexpectedDeclarationInImplBlock(decl)
   exception UndeclaredIdentifer(string)
+  exception UnreachableLetStmt
 
-  let rec fromExpr = expr => {
+  // rewrite
+  // let f = (a, b) -> body
+  // into
+  // let rec f (a, b) = body
+  let rec rewriteLetIn = (x, mut, e1, e2, tau: monoTy) => {
+    switch e1 {
+    | CoreFuncExpr(tau, args, body) => {
+        let f = x
+        CoreLetRecInExpr(tau, f, args, body, e2)
+      }
+    | _ => CoreLetInExpr(tau, mut, x, e1, e2)
+    }
+  }
+
+  and fromExpr = (expr: Ast.expr): expr => {
     open Context
     let __tau = lazy freshTyVar()
     let tau = _ => Lazy.force(__tau)
@@ -178,27 +202,38 @@ module CoreAst = {
     | AssignmentExpr(lhs, rhs) => CoreAssignmentExpr(fromExpr(lhs), fromExpr(rhs))
     | FuncExpr(args, body) =>
       switch args {
-      | [] => CoreFuncExpr(tau(), None, [freshIdentifier("__x")], fromExpr(body))
-      | _ => CoreFuncExpr(tau(), None, args->Array.map(freshIdentifier(~ty=None)), fromExpr(body))
+      | [] => CoreFuncExpr(tau(), [freshIdentifier("__x")], fromExpr(body))
+      | _ => CoreFuncExpr(tau(), args->Array.map(freshIdentifier(~ty=None)), fromExpr(body))
       }
     | LetInExpr(x, e1, e2) =>
-      switch e1 {
-      | FuncExpr(args, body) => {
-          let f = Context.freshIdentifier(x)
-          let func = CoreFuncExpr(
-            Context.freshTyVar(),
-            Some(f),
-            args->Array.map(Context.freshIdentifier(~ty=None)),
-            fromExpr(body),
-          )
-
-          CoreLetInExpr(tau(), f, func, fromExpr(e2))
-        }
-      | _ => CoreLetInExpr(tau(), freshIdentifier(x), fromExpr(e1), fromExpr(e2))
-      }
+      rewriteLetIn(Context.freshIdentifier(x), false, fromExpr(e1), fromExpr(e2), tau())
     | AppExpr(f, args) => CoreAppExpr(tau(), fromExpr(f), args->Array.map(arg => fromExpr(arg)))
-    | BlockExpr(stmts, lastExpr, safety) =>
-      CoreBlockExpr(tau(), stmts->Array.map(fromStmt), lastExpr->Option.map(fromExpr), safety)
+    | BlockExpr(stmts, lastExpr, safety) => {
+        // rewrite
+        // { let a = 3; let b = 7; a * b }
+        // into
+        // let a = 3 in let b = 7 in a * b
+        let rec aux = stmts =>
+          switch stmts {
+          | list{Ast.LetStmt(x, mut, e, tau), ...tl} =>
+            Some(
+              rewriteLetIn(
+                Context.freshIdentifier(x),
+                mut,
+                fromExpr(e),
+                aux(tl)->Option.mapWithDefault(CoreConstExpr(Const.UnitConst), x => x),
+                switch tau {
+                | Some(ty) => ty
+                | None => Context.freshTyVar()
+                },
+              ),
+            )
+          | list{stmt, ...tl} => Some(CoreBlockExpr(tau(), [fromStmt(stmt)], aux(tl), safety))
+          | list{} => lastExpr->Option.map(fromExpr)
+          }
+
+        CoreBlockExpr(tau(), [], aux(stmts->List.fromArray), safety)
+      }
     | IfExpr(cond, thenE, elseE) =>
       // if the else expression is missing, replace it by unit
       CoreIfExpr(
@@ -219,25 +254,12 @@ module CoreAst = {
     }
   }
 
-  and fromStmt = stmt =>
+  and fromStmt = stmt => {
     switch stmt {
-    | LetStmt(x, mut, rhs, ty) =>
-      switch rhs {
-      | FuncExpr(args, body) => {
-          let f = Context.freshIdentifier(x, ~ty)
-          let func = CoreFuncExpr(
-            Context.freshTyVar(),
-            Some(f),
-            args->Array.map(Context.freshIdentifier(~ty=None)),
-            fromExpr(body),
-          )
-
-          CoreLetStmt(f, mut, func)
-        }
-      | _ => CoreLetStmt(Context.freshIdentifier(x, ~ty), mut, fromExpr(rhs))
-      }
+    | LetStmt(_, _, _, _) => raise(UnreachableLetStmt)
     | ExprStmt(expr) => CoreExprStmt(fromExpr(expr))
     }
+  }
 
   and fromDecl = decl => {
     switch decl {
@@ -277,8 +299,9 @@ module CoreAst = {
     | CoreBinOpExpr(tau, a, op, b) => CoreBinOpExpr(subst(tau), go(a), op, go(b))
     | CoreVarExpr(x) => CoreVarExpr(x)
     | CoreAssignmentExpr(lhs, rhs) => CoreAssignmentExpr(go(lhs), go(rhs))
-    | CoreFuncExpr(tau, name, args, e) => CoreFuncExpr(subst(tau), name, args, go(e))
-    | CoreLetInExpr(tau, x, e1, e2) => CoreLetInExpr(subst(tau), x, go(e1), go(e2))
+    | CoreFuncExpr(tau, args, e) => CoreFuncExpr(subst(tau), args, go(e))
+    | CoreLetInExpr(tau, mut, x, e1, e2) => CoreLetInExpr(subst(tau), mut, x, go(e1), go(e2))
+    | CoreLetRecInExpr(tau, f, x, e1, e2) => CoreLetRecInExpr(subst(tau), f, x, go(e1), go(e2))
     | CoreAppExpr(tau, lhs, args) => CoreAppExpr(subst(tau), go(lhs), args->Array.map(go))
     | CoreBlockExpr(tau, exprs, lastExpr, safety) =>
       CoreBlockExpr(subst(tau), exprs->Array.map(substStmt(s)), lastExpr->Option.map(go), safety)
@@ -313,7 +336,6 @@ module CoreAst = {
   and substStmt = (s: Subst.t, stmt: stmt): stmt => {
     switch stmt {
     | CoreExprStmt(expr) => CoreExprStmt(substExpr(s, expr))
-    | CoreLetStmt(x, mut, rhs) => CoreLetStmt(x, mut, substExpr(s, rhs))
     }
   }
 
