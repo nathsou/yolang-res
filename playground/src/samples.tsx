@@ -6,6 +6,7 @@ import primes from '../../samples/primes.yo?raw';
 import struct from '../../samples/struct.yo?raw';
 import lambda from '../../samples/lambda.yo?raw';
 import vector from '../../samples/allocator.yo?raw';
+import euler92 from '../../samples/euler-92.yo?raw';
 
 export const samples = {
   'Prime sieve': sieve,
@@ -16,4 +17,5 @@ export const samples = {
   'Structs': struct,
   'Lambda (kind of)': lambda,
   'Vector': vector,
+  'Project Euler 92': euler92,
 };

@@ -1,0 +1,14 @@
+
+struct Vec<T> {
+  start: Ptr<T>,
+  mut length: u32,
+}
+
+fn main() {
+  mut vec = Vec {
+    start: 64 * 1024 as Ptr<u32>,
+    length: 0,
+  };
+
+  vec.len
+}
