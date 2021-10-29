@@ -27,6 +27,11 @@ module CoreAst = {
     | CoreGlobalDecl(Context.nameRef, bool, expr)
     | CoreStructDecl(string, array<(string, Types.monoTy, bool)>)
     | CoreImplDecl(string, array<(Context.nameRef, array<(Context.nameRef, bool)>, expr)>)
+    | CoreExternFuncDecl({
+        name: Context.nameRef,
+        args: array<(Context.nameRef, bool)>,
+        ret: Types.monoTy,
+      })
 
   let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
@@ -160,6 +165,10 @@ module CoreAst = {
       funcs->Array.joinWith("\n\n", ((f, args, body)) =>
         showDecl(CoreFuncDecl(f, args, body))
       ) ++ "\n}"
+    | CoreExternFuncDecl({name, args, ret}) =>
+      `extern fn ${name.contents.name}(${args->Array.joinWith(", ", ((arg, mut)) =>
+          (mut ? "mut " : "") ++ arg.contents.name ++ ": " ++ Types.showMonoTy(arg.contents.ty)
+        )}) -> ${Types.showMonoTy(ret)}`
     }
   }
 
@@ -287,6 +296,11 @@ module CoreAst = {
 
         CoreImplDecl(typeName, funcs)
       }
+    | Ast.ExternFuncDecl({name, args, ret}) => {
+        let args =
+          args->Array.map(((x, ty, mut)) => (Context.freshIdentifier(~ty=Some(ty), x), mut))
+        CoreExternFuncDecl({name: Context.freshIdentifier(name), args: args, ret: ret})
+      }
     }
   }
 
@@ -346,6 +360,7 @@ module CoreAst = {
     | CoreStructDecl(_) => decl
     | CoreImplDecl(typeName, funcs) =>
       CoreImplDecl(typeName, funcs->Array.map(((f, args, body)) => (f, args, substExpr(s, body))))
+    | CoreExternFuncDecl(_) => decl
     }
   }
 }

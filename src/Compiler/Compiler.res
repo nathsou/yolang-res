@@ -192,6 +192,12 @@ type blockInfo = {
   shadowStackDelta: ref<int>,
 }
 
+type externFuncInfo = {
+  name: string,
+  args: array<(string, Types.monoTy, bool)>,
+  ret: Types.monoTy,
+}
+
 type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
@@ -201,6 +207,7 @@ type t = {
   globalsInitializer: Func.t,
   stackTop: Global.t,
   blockStack: MutableStack.t<blockInfo>,
+  externFuncs: array<externFuncInfo>,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -211,7 +218,19 @@ let getCurrentFuncExn = (self: t): Func.t => {
 }
 
 let findFuncIndexByName = (self: t, name: string): option<(Func.t, Wasm.Func.index)> => {
-  self.funcs->ArrayUtils.getValueAndIndexBy(f => f.name == name)
+  self.funcs
+  ->ArrayUtils.getValueAndIndexBy(f => f.name == name)
+  ->Option.map(((f, index)) => {
+    let importsCount = self.externFuncs->Array.length
+    (f, importsCount + index)
+  })
+}
+
+let findExternalFuncIndexByName = (self: t, name: string): option<(
+  externFuncInfo,
+  Wasm.Func.index,
+)> => {
+  self.externFuncs->ArrayUtils.getValueAndIndexBy(f => f.name == name)
 }
 
 let emit = (self: t, inst: Wasm.Inst.t): unit => {
@@ -559,7 +578,10 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         self->emit(Wasm.Inst.CallIndirect(funcSigIndex, 0))
       }
 
-      let checkArgsMutability = ({params}: Func.t, selfArg: option<CoreExpr.t>) => {
+      let checkArgsMutability = (
+        params: array<(string, Types.monoTy, bool)>,
+        selfArg: option<CoreExpr.t>,
+      ) => {
         let args = switch selfArg {
         | Some(self) => Array.concat([self], args)
         | _ => args
@@ -581,15 +603,17 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         | None =>
           switch self->findFuncIndexByName(f.contents.newName) {
           | Some((func, idx)) => {
-              checkArgsMutability(func, None)
-
-              args->Array.forEach(arg => {
-                self->compileExpr(arg)
-              })
-
-              self->emit(Wasm.Inst.Call(idx))
+              checkArgsMutability(func.params, None)
+              callDirect(idx)
             }
-          | None => raise(CompilerExn.FunctionNotFound(f.contents.name))
+          | None =>
+            switch self->findExternalFuncIndexByName(f.contents.newName) {
+            | Some(func, idx) => {
+                checkArgsMutability(func.args, None)
+                callDirect(idx)
+              }
+            | None => raise(CompilerExn.FunctionNotFound(f.contents.name))
+            }
           }
         | _ => callIndirect()
         }
@@ -631,7 +655,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
             } else {
               None
             }
-            checkArgsMutability(func, selfArg)
+            checkArgsMutability(func.params, selfArg)
           })
 
           // if this is a method, add self as the first argument
@@ -862,6 +886,24 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
     funcs->Array.forEach(((f, args, body)) => {
       self->compileDecl(CoreFuncDecl(f, args, body))
     })
+  | CoreExternFuncDecl({name: f, args, ret}) => {
+      let signature = f.contents.ty->funcSignatureOf
+      let fSigIdx = self.mod->Wasm.Module.getOrAddSignature(signature)
+      let _ =
+        self.mod->Wasm.Module.addImport(
+          Wasm.ImportEntry.make(
+            "index",
+            f.contents.name,
+            Wasm.ImportEntry.ImportDesc.Func(fSigIdx),
+          ),
+        )
+
+      let _ = self.externFuncs->Js.Array2.push({
+        name: f.contents.name,
+        args: args->Array.map(((x, mut)) => (x.contents.name, x.contents.ty, mut)),
+        ret: ret,
+      })
+    }
   }
 }
 
@@ -884,6 +926,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
       Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(64 * 1024 - 1)]),
     ),
     blockStack: MutableStack.make(),
+    externFuncs: [],
   }
 
   // add the STACK_TOP global

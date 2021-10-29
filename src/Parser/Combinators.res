@@ -110,6 +110,22 @@ let seq6 = (
   )
 }
 
+let seq7 = (
+  a: parser<'a>,
+  b: parser<'b>,
+  c: parser<'c>,
+  d: parser<'d>,
+  e: parser<'e>,
+  f: parser<'f>,
+  g: parser<'g>,
+): parser<('a, 'b, 'c, 'd, 'e, 'f, 'g)> => {
+  ref(input =>
+    seq6(a, b, c, d, e, f).contents(input)->Option.flatMap((((a, b, c, d, e, f), rem)) =>
+      g.contents(rem)->Option.map(((g, rem)) => ((a, b, c, d, e, f, g), rem))
+    )
+  )
+}
+
 let rec seq = (ps: list<parser<'a>>): parser<list<'a>> => {
   switch ps {
   | list{} => ref(input => Some((list{}, input)))

@@ -1,0 +1,12 @@
+
+// console.log
+extern fn log(n: u32) -> u32;
+
+fn main() {
+  let loop = n -> if n > 0 { 
+    log(n);
+    loop(n - 1);
+  };
+
+  loop(10);
+}

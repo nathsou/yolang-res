@@ -46,7 +46,11 @@ let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
   let instanciate: Js.Typed_array.Uint8Array.t => Js.Promise.t<'a> = %raw(`
     function(bytes) {
       return WebAssembly.compile(bytes.buffer)
-        .then(module => new WebAssembly.Instance(module, {}))
+        .then(module => new WebAssembly.Instance(module, {
+          index: {
+            log: console.log,
+          }
+        }))
         .then(instance => instance.exports.main);
     }
   `)

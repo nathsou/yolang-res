@@ -421,9 +421,7 @@ module Func = {
     let funcTypeCode = 0x60
 
     @genType
-    let make = (params, rets) => {
-      FuncSig(params, rets)
-    }
+    let make = (params, rets): t => FuncSig(params, rets)
 
     @genType
     let empty = make([], [])
@@ -539,7 +537,7 @@ module Func = {
 }
 
 module TypeSection = {
-  // The Type Section consists of an list of function signatures.
+  // The Type Section consists of a list of function signatures.
   @genType
   type t = array<Func.Signature.t>
 
@@ -960,10 +958,85 @@ module MemorySection = {
   }
 }
 
+module Import = {
+  @genType
+  type index = int
+}
+
+module ImportEntry = {
+  module ImportDesc = {
+    @genType
+    type t = Func(Func.Signature.index)
+
+    @genType
+    let make = ()
+
+    @genType
+    let encode = (desc: t): Vec.t =>
+      switch desc {
+      | Func(funcSigIdx) => Array.concatMany([[0x00], uleb128(funcSigIdx)])
+      }
+
+    @genType
+    let show = (desc: t): string => {
+      switch desc {
+      | Func(funcSigIdx) => `func (index: ${Int.toString(funcSigIdx)})`
+      }
+    }
+  }
+
+  @genType
+  type t = {moduleName: string, entityName: string, desc: ImportDesc.t}
+
+  @genType
+  let encode = ({moduleName, entityName, desc}: t): Vec.t => {
+    Array.concatMany([moduleName->Str.encode, entityName->Str.encode, desc->ImportDesc.encode])
+  }
+
+  @genType
+  let make = (moduleName, entityName, desc): t => {
+    moduleName: moduleName,
+    entityName: entityName,
+    desc: desc,
+  }
+
+  @genType
+  let show = ({moduleName, entityName, desc}: t) => {
+    `import ${ImportDesc.show(desc)} ${moduleName}.${entityName}}`
+  }
+}
+
+module ImportSection = {
+  @genType
+  type t = array<ImportEntry.t>
+
+  @genType
+  let make = (): t => []
+
+  @genType
+  let add = (self: t, imp: ImportEntry.t): int => {
+    let index = self->Js.Array2.push(imp) - 1
+    index
+  }
+
+  @genType
+  let encode = (self: t): Vec.t => {
+    Section.encode(Section.Import, Vec.encodeMany(self->Array.map(ImportEntry.encode)))
+  }
+
+  @genType
+  let show = (self: t) => {
+    Section.show(Section.Import) ++ "\n" ++ self->Array.joinWith("\n", ImportEntry.show)
+  }
+
+  let count = (self: t) => self->Array.length
+}
+
 module Module = {
   @genType
   type t = {
     typeSection: TypeSection.t,
+    importSection: ImportSection.t,
     funcSection: FuncSection.t,
     tableSection: TableSection.t,
     memorySection: MemorySection.t,
@@ -972,12 +1045,12 @@ module Module = {
     elementSection: ElementSection.t,
     codeSection: CodeSection.t,
     funcs: array<Func.t>,
-    importsCount: int,
   }
 
   @genType
   let make = (): t => {
     typeSection: TypeSection.make(),
+    importSection: ImportSection.make(),
     funcSection: FuncSection.make(),
     tableSection: TableSection.make(),
     memorySection: MemorySection.make(),
@@ -986,7 +1059,6 @@ module Module = {
     elementSection: ElementSection.make(),
     codeSection: CodeSection.make(),
     funcs: [],
-    importsCount: 0,
   }
 
   @genType
@@ -999,7 +1071,7 @@ module Module = {
     let sigIndex = self->getOrAddSignature(sig)
     let _ = self.funcSection->FuncSection.addSignature(sigIndex)
     let _ = self.funcs->Js.Array2.push(Func.make(name, sig, body))
-    self.codeSection->CodeSection.addFunc(body) + self.importsCount
+    self.codeSection->CodeSection.addFunc(body) + self.importSection->ImportSection.count
   }
 
   @genType
@@ -1038,10 +1110,16 @@ module Module = {
   }
 
   @genType
+  let addImport = (self: t, imp: ImportEntry.t): Import.index => {
+    self.importSection->ImportSection.add(imp)
+  }
+
+  @genType
   let encode = (self: t): Vec.t => {
     Array.concatMany([
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
       self.typeSection->TypeSection.encode,
+      self.importSection->ImportSection.encode,
       self.funcSection->FuncSection.encode,
       self.tableSection->TableSection.encode,
       self.memorySection->MemorySection.encode,
@@ -1061,6 +1139,7 @@ module Module = {
   let show = (self: t) => {
     [
       self.typeSection->TypeSection.show,
+      self.importSection->ImportSection.show,
       self.funcSection->FuncSection.show(self.funcs->Array.map(((name, _, _)) => name)),
       self.tableSection->TableSection.show,
       self.memorySection->MemorySection.show,

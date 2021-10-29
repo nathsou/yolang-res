@@ -6,7 +6,11 @@ import { samples } from './samples';
 
 const runModule = async (bytes: Uint8Array): Promise<string> => {
   const module = await WebAssembly.compile(bytes);
-  const instance = await WebAssembly.instantiate(module);
+  const instance = await WebAssembly.instantiate(module, {
+    index: {
+      log: console.log,
+    }
+  });
 
   if ('main' in instance.exports) {
     return (instance.exports as { main: () => any }).main();

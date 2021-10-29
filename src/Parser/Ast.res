@@ -79,6 +79,7 @@ module Ast = {
     | GlobalDecl(string, bool, expr)
     | StructDecl(string, array<(string, Types.monoTy, bool)>)
     | ImplDecl(string, array<decl>)
+    | ExternFuncDecl({name: string, args: array<(string, Types.monoTy, bool)>, ret: Types.monoTy})
 
   let rec showExpr = expr =>
     switch expr {
@@ -136,6 +137,10 @@ module Ast = {
       ) ++ "\n}"
     | ImplDecl(structName, decls) =>
       `${structName} {\n` ++ decls->Array.joinWith("\n\n", showDecl) ++ "\n}"
+    | ExternFuncDecl({name: f, args, ret}) =>
+      `extern fn ${f}(${args->Array.joinWith(", ", ((arg, ty, mut)) =>
+          (mut ? "mut " : "") ++ arg ++ ": " ++ Types.showMonoTy(ty)
+        )}) -> ${Types.showMonoTy(ret)}`
     }
 
   and showStmt = stmt =>

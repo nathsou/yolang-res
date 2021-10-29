@@ -332,6 +332,23 @@ let funDecl = alt(
   structDecl,
 )
 
+let externFunDecl = alt(
+  seq7(
+    token(Keyword(Keywords.Extern)),
+    token(Keyword(Keywords.Fn)),
+    ident,
+    parens(
+      commas(
+        seq4(optional(token(Keyword(Keywords.Mut))), ident, token(Symbol(Symbol.Colon)), type_),
+      )->map(args => args->Array.map(((mut, arg, _, ty)) => (arg, ty, mut->Option.isSome))),
+    ),
+    token(Symbol(Symbol.RightArrow)),
+    type_,
+    token(Symbol(SemiColon)),
+  )->map(((_, _, f, args, _, ret, _)) => Ast.ExternFuncDecl({name: f, args: args, ret: ret})),
+  funDecl,
+)
+
 let implDecl = alt(
   seq3(
     token(Keyword(Keywords.Impl)),
@@ -342,7 +359,7 @@ let implDecl = alt(
       _,
     )) => decls),
   )->map(((_, structName, decls)) => Ast.ImplDecl(structName, decls)),
-  funDecl,
+  externFunDecl,
 )
 
 decl := implDecl.contents

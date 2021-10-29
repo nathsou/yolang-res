@@ -469,6 +469,13 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
 
       (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig)
     })
+  | CoreExternFuncDecl({name: f, args, ret}) => {
+      let fTy = funTy(args->Array.map(((x, _)) => x.contents.ty), ret)
+
+      unify(f.contents.ty, fTy)->Result.map(sig => {
+        (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig)
+      })
+    }
   | CoreGlobalDecl(x, _, init) =>
     collectCoreExprTypeSubstsWith(env, init, x.contents.ty)->Result.map(sig => {
       (substEnv(sig, env->Env.addMono(x.contents.name, x.contents.ty)), sig)
