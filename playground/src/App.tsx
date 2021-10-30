@@ -9,6 +9,11 @@ const runModule = async (bytes: Uint8Array): Promise<string> => {
   const instance = await WebAssembly.instantiate(module, {
     index: {
       log: console.log,
+      expectEqual: (a: any, b: any) => {
+        if (a !== b) {
+          throw new Error(`[expectEqual] expected ${a}, got: ${b}`);
+        }
+      },
     }
   });
 

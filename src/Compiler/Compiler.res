@@ -426,23 +426,37 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
         // this holds for any zero-sized type
         self->compileExpr(CoreConstExpr(Ast.Const.BoolConst(op == Equ)))
       } else {
-        let opInst = switch op {
-        | Plus => Wasm.Inst.AddI32
-        | Sub => Wasm.Inst.SubI32
-        | Mult => Wasm.Inst.MulI32
-        | Div => Wasm.Inst.DivI32Unsigned
-        | Equ => Wasm.Inst.EqI32
-        | Neq => Wasm.Inst.NeI32
-        | Lss => Wasm.Inst.LtI32Unsigned
-        | Leq => Wasm.Inst.LeI32Unsigned
-        | Gtr => Wasm.Inst.GtI32Unsigned
-        | Geq => Wasm.Inst.GeI32Unsigned
-        | Mod => Wasm.Inst.RemI32Unsigned
+        let emitBinOp = opInst => {
+          self->compileExpr(lhs)
+          self->compileExpr(rhs)
+          self->emit(opInst)
         }
 
-        self->compileExpr(lhs)
-        self->compileExpr(rhs)
-        self->emit(opInst)
+        switch op {
+        | Plus => emitBinOp(Wasm.Inst.AddI32)
+        | Sub => emitBinOp(Wasm.Inst.SubI32)
+        | Mult => emitBinOp(Wasm.Inst.MulI32)
+        | Div => emitBinOp(Wasm.Inst.DivI32Unsigned)
+        | Equ => emitBinOp(Wasm.Inst.EqI32)
+        | Neq => emitBinOp(Wasm.Inst.NeI32)
+        | Lss => emitBinOp(Wasm.Inst.LtI32Unsigned)
+        | Leq => emitBinOp(Wasm.Inst.LeI32Unsigned)
+        | Gtr => emitBinOp(Wasm.Inst.GtI32Unsigned)
+        | Geq => emitBinOp(Wasm.Inst.GeI32Unsigned)
+        | Mod => emitBinOp(Wasm.Inst.RemI32Unsigned)
+        | BitwiseAnd => emitBinOp(Wasm.Inst.AndI32)
+        | BitwiseOr => emitBinOp(Wasm.Inst.OrI32)
+        | ShiftLeft => emitBinOp(Wasm.Inst.ShlI32)
+        | ShiftRight => emitBinOp(Wasm.Inst.ShrI32Unsigned)
+        | LogicalAnd =>
+          self->compileExpr(
+            CoreIfExpr(Types.boolTy, lhs, rhs, CoreConstExpr(Ast.Const.BoolConst(false))),
+          )
+        | LogicalOr =>
+          self->compileExpr(
+            CoreIfExpr(Types.boolTy, lhs, CoreConstExpr(Ast.Const.BoolConst(true)), rhs),
+          )
+        }
       }
     }
   | CoreBlockExpr(_, stmts, lastExpr, safety) => {

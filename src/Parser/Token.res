@@ -22,6 +22,15 @@ module Symbol = {
     | Geq
     | Bang
     | Dot
+    | Ampersand
+    | DoubleAmpersand
+    | Pipe
+    | DoublePipe
+    | PlusEq
+    | MinusEq
+    | StarEq
+    | DivEq
+    | ModEq
 
   let show = s =>
     switch s {
@@ -47,6 +56,15 @@ module Symbol = {
     | Geq => ">="
     | Bang => "!"
     | Dot => "."
+    | Ampersand => "&"
+    | DoubleAmpersand => "&&"
+    | Pipe => "|"
+    | DoublePipe => "||"
+    | PlusEq => "+="
+    | MinusEq => "-="
+    | StarEq => "*="
+    | DivEq => "/="
+    | ModEq => "%="
     }
 }
 

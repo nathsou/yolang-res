@@ -41,7 +41,7 @@ impl Vec {
     mut i = 0;
     while i < self.length {
       *(((newStart as u32) + (i * SIZEOF_U32)) as Ptr<u32>) = self.read(i);
-      i = i + 1;
+      i += 1;
     }
 
     allocator.free(self.start);
@@ -55,12 +55,12 @@ impl Vec {
     }
 
     self.write(self.length, val);
-    self.length = self.length + 1;
+    self.length += 1;
   }
 
   fn pop(mut self) unsafe {
     if self.length > 0 {
-      self.length = self.length - 1;
+      self.length -= 1;
       self.read(self.length)
     } else {
       // until we have Option<T>
@@ -79,7 +79,7 @@ fn main() {
   mut i = 0;
   while i < 1000 {
     vec.push(i);
-    i = i + 1;
+    i += 1;
   }
 
   (vec.length, vec.capacity, vec.read(723))

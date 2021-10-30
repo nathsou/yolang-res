@@ -15,7 +15,7 @@ fn main() {
   mut i = 0;
   while i < 100 {
     write_u32(i, square(i));
-    i = i + 1;
+    i += 1;
   }
 
   read_u32(42) // 1764

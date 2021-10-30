@@ -60,6 +60,8 @@ let some = (parser: parser<'a>): parser<array<'a>> => {
   then(parser, many(parser))->map(((a, bs)) => Array.concat([a], bs))
 }
 
+let seq2 = then
+
 let seq3 = (a: parser<'a>, b: parser<'b>, c: parser<'c>): parser<('a, 'b, 'c)> => {
   ref(input =>
     then(a, b).contents(input)->Option.flatMap((((a, b), rem)) =>

@@ -13,6 +13,12 @@ module BinOp = {
     | Geq
     | Equ
     | Neq
+    | LogicalAnd
+    | LogicalOr
+    | BitwiseAnd
+    | BitwiseOr
+    | ShiftLeft
+    | ShiftRight
 
   let show = op =>
     switch op {
@@ -27,6 +33,12 @@ module BinOp = {
     | Geq => ">="
     | Equ => "=="
     | Neq => "!="
+    | LogicalAnd => "&&"
+    | LogicalOr => "||"
+    | BitwiseAnd => "&"
+    | BitwiseOr => "|"
+    | ShiftLeft => "<<"
+    | ShiftRight => ">>"
     }
 }
 

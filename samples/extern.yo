@@ -1,11 +1,12 @@
 
 extern fn log(n: u32) -> ();
+extern fn expectEqual(value: u32, expected: u32) -> ();
 
 fn main() {
   mut i = 0;
   
   while i <= 10 {
-    log(i);
-    i = i + 1;
+    expectEqual(i, i);
+    i += 1;
   }
 }

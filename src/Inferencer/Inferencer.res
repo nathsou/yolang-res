@@ -28,6 +28,12 @@ let binOpTy = (op: Ast.BinOp.t): polyTy => {
   | Leq => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Gtr => polyOf(funTy([u32Ty, u32Ty], boolTy))
   | Geq => polyOf(funTy([u32Ty, u32Ty], boolTy))
+  | LogicalAnd => polyOf(funTy([boolTy, boolTy], boolTy))
+  | LogicalOr => polyOf(funTy([boolTy, boolTy], boolTy))
+  | BitwiseAnd => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | BitwiseOr => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | ShiftLeft => polyOf(funTy([u32Ty, u32Ty], u32Ty))
+  | ShiftRight => polyOf(funTy([u32Ty, u32Ty], u32Ty))
   }
 }
 

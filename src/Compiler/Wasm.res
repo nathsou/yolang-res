@@ -265,7 +265,11 @@ module Inst = {
     | GtF64
     | RemI32Signed
     | RemI32Unsigned
-    | And
+    | AndI32
+    | OrI32
+    | ShlI32
+    | ShrI32Signed
+    | ShrI32Unsigned
 
   @genType
   let info = inst =>
@@ -341,7 +345,11 @@ module Inst = {
     | GtI64Unsigned => (0x56, "i64.gt_u")
     | GtF32 => (0x5e, "f32.gt")
     | GtF64 => (0x64, "f64.gt")
-    | And => (0x71, "i32.and")
+    | AndI32 => (0x71, "i32.and")
+    | OrI32 => (0x72, "i32.or")
+    | ShlI32 => (0x74, "i32.shl")
+    | ShrI32Signed => (0x75, "i32.shr_s")
+    | ShrI32Unsigned => (0x76, "i32.shr_u")
     }
 
   @genType

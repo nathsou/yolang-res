@@ -143,6 +143,18 @@ let multOp = anyOf([
   token(Symbol(Symbol.Percent))->map(_ => BinOp.Mod),
 ])
 
+let logicalOp = anyOf([
+  token(Symbol(Symbol.DoubleAmpersand))->map(_ => BinOp.LogicalAnd),
+  token(Symbol(Symbol.DoublePipe))->map(_ => BinOp.LogicalOr),
+])
+
+let bitwiseOp = anyOf([
+  token(Symbol(Symbol.Ampersand))->map(_ => BinOp.BitwiseAnd),
+  token(Symbol(Symbol.Pipe))->map(_ => BinOp.BitwiseOr),
+  seq2(token(Symbol(Symbol.Lss)), token(Symbol(Symbol.Lss)))->map(_ => BinOp.ShiftLeft),
+  seq2(token(Symbol(Symbol.Gtr)), token(Symbol(Symbol.Gtr)))->map(_ => BinOp.ShiftRight),
+])
+
 let comparisonOp = anyOf([
   token(Symbol(Symbol.Lss))->map(_ => BinOp.Lss),
   token(Symbol(Symbol.Leq))->map(_ => BinOp.Leq),
@@ -163,7 +175,11 @@ let term = chainLeft(unary, multOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let arith = chainLeft(term, addOp, (a, op, b) => BinOpExpr(a, op, b))
 
-let comparison = chainLeft(arith, comparisonOp, (a, op, b) => BinOpExpr(a, op, b))
+let logical = chainLeft(arith, logicalOp, (a, op, b) => BinOpExpr(a, op, b))
+
+let bitwise = chainLeft(logical, bitwiseOp, (a, op, b) => BinOpExpr(a, op, b))
+
+let comparison = chainLeft(bitwise, comparisonOp, (a, op, b) => BinOpExpr(a, op, b))
 
 let equality = chainLeft(comparison, eqOp, (a, op, b) => BinOpExpr(a, op, b))
 
@@ -252,7 +268,25 @@ let structExpr = alt(
   block,
 )
 
-let assignment = chainLeft(structExpr, token(Symbol(Eq)), (a, _, b) => Ast.AssignmentExpr(a, b))
+let assignmentOp: parser<[#eq | #plusEq | #minusEq | #starEq | #divEq | #modEq]> = anyOf([
+  token(Symbol(Symbol.Eq))->map(_ => #eq),
+  token(Symbol(Symbol.PlusEq))->map(_ => #plusEq),
+  token(Symbol(Symbol.MinusEq))->map(_ => #minusEq),
+  token(Symbol(Symbol.StarEq))->map(_ => #starEq),
+  token(Symbol(Symbol.DivEq))->map(_ => #divEq),
+  token(Symbol(Symbol.ModEq))->map(_ => #modEq),
+])
+
+let assignment = chainLeft(structExpr, assignmentOp, (a, op, b) =>
+  switch op {
+  | #eq => Ast.AssignmentExpr(a, b)
+  | #plusEq => Ast.AssignmentExpr(a, Ast.BinOpExpr(a, BinOp.Plus, b))
+  | #minusEq => Ast.AssignmentExpr(a, Ast.BinOpExpr(a, BinOp.Sub, b))
+  | #starEq => Ast.AssignmentExpr(a, Ast.BinOpExpr(a, BinOp.Mult, b))
+  | #divEq => Ast.AssignmentExpr(a, Ast.BinOpExpr(a, BinOp.Div, b))
+  | #modEq => Ast.AssignmentExpr(a, Ast.BinOpExpr(a, BinOp.Mod, b))
+  }
+)
 
 let returnExpr = alt(
   then(token(Keyword(Keywords.Return)), optional(expr))->map(((_, ret)) => Ast.ReturnExpr(ret)),

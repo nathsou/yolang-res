@@ -17,7 +17,7 @@ impl Array {
 
   fn push(mut self, val) {
     self.write(self.length, val);
-    self.length = self.length + 1;
+    self.length += 1;
   }
 }
 
@@ -40,7 +40,7 @@ impl Sieve {
 
     while p * p <= n {
       if n % p == 0 { return false; }
-      i = i + 1;
+      i += 1;
       p = self.primes.read(i);
     }
 
@@ -52,10 +52,10 @@ impl Sieve {
   }
 
   fn nextPrime(mut self) {
-    self.current = self.current + 2;
+    self.current += 2;
 
     while !self.isPrime(self.current) {
-      self.current = self.current + 2;
+      self.current += 2;
     }
 
     self.current

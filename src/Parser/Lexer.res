@@ -46,6 +46,13 @@ let symbol = anyOf([
   string("->")->map(_ => Symbol(RightArrow)),
   string("==")->map(_ => Symbol(EqEq)),
   string("!=")->map(_ => Symbol(Neq)),
+  string("&&")->map(_ => Symbol(DoubleAmpersand)),
+  string("||")->map(_ => Symbol(DoublePipe)),
+  string("+=")->map(_ => Symbol(PlusEq)),
+  string("-=")->map(_ => Symbol(MinusEq)),
+  string("*=")->map(_ => Symbol(StarEq)),
+  string("/=")->map(_ => Symbol(DivEq)),
+  string("%=")->map(_ => Symbol(ModEq)),
   char('+')->map(_ => Symbol(Plus)),
   char('-')->map(_ => Symbol(Minus)),
   char('*')->map(_ => Symbol(Star)),
@@ -65,6 +72,8 @@ let symbol = anyOf([
   char(':')->map(_ => Symbol(Colon)),
   char('!')->map(_ => Symbol(Bang)),
   char('.')->map(_ => Symbol(Dot)),
+  char('&')->map(_ => Symbol(Ampersand)),
+  char('|')->map(_ => Symbol(Pipe)),
 ])
 
 let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])

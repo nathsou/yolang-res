@@ -19,12 +19,12 @@ struct Rc {
 
 impl Rc {
   fn bump(mut self) {
-    self.refsCount = self.refsCount + 1;
+    self.refsCount += 1;
   }
 
   fn drop(mut self) {
     if self.refsCount > 1 {
-      self.refsCount = self.refsCount - 1;
+      self.refsCount -= 1;
     } else {
       // free
     }
