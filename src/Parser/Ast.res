@@ -109,7 +109,7 @@ module Ast = {
       Array.concat(
         stmts->Array.map(showStmt),
         lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
-      )->Array.joinWith(";\n", str => `  ${str}`) ++ "}\n}"
+      )->Array.joinWith(";\n", str => `  ${str}`) ++ "\n}"
     | WhileExpr(cond, body) => `while ${showExpr(cond)} ${showExpr(body)}`
     | ReturnExpr(ret) => "return " ++ ret->Option.mapWithDefault("", showExpr)
     | TypeAssertionExpr(e, ty) => `${showExpr(e)} as ${Types.showMonoTy(ty)}`
@@ -145,13 +145,8 @@ module Ast = {
 
   and showStmt = stmt =>
     switch stmt {
-    | LetStmt(x, mut, rhs, _) =>
-      if mut {
-        `let mut ${x} = ${showExpr(rhs)}`
-      } else {
-        `let ${x} = ${showExpr(rhs)}`
-      }
-    | ExprStmt(expr) => showExpr(expr) ++ ";"
+    | LetStmt(x, mut, rhs, _) => `${mut ? "mut" : "let"} ${x} = ${showExpr(rhs)}`
+    | ExprStmt(expr) => showExpr(expr)
     }
 }
 

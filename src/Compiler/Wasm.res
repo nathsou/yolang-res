@@ -599,38 +599,6 @@ module FuncSection = {
   }
 }
 
-module CodeSection = {
-  @genType
-  type t = array<Func.Body.t>
-
-  @genType
-  let make = (): t => []
-
-  @genType
-  let addFunc = (self: t, f): Func.index => {
-    let _ = self->Js.Array2.push(f)
-    self->Array.length - 1
-  }
-
-  @genType
-  let encode = (bodies: t): Vec.t => {
-    Section.encode(Section.Code, Vec.encodeMany(bodies->Array.map(Func.Body.encode)))
-  }
-
-  @genType
-  let show = (self: t, funcs: array<Func.t>) => {
-    let funcNames = funcs->Array.map(((name, _, _)) => name)
-
-    Section.show(Section.Code) ++
-    "\n" ++
-    self
-    ->Array.zip(funcs)
-    ->Array.joinWith("\n\n", ((b, (name, sig, _))) => {
-      `${name}\n` ++ b->Func.Body.show(funcNames, sig)
-    })
-  }
-}
-
 module Str = {
   @genType
   let encode = (str: string): Vec.t => {
@@ -1002,7 +970,7 @@ module ImportEntry = {
 
   @genType
   let show = ({moduleName, entityName, desc}: t) => {
-    `import ${ImportDesc.show(desc)} ${moduleName}.${entityName}}`
+    `import ${ImportDesc.show(desc)} ${moduleName}.${entityName}`
   }
 }
 
@@ -1029,7 +997,49 @@ module ImportSection = {
     Section.show(Section.Import) ++ "\n" ++ self->Array.joinWith("\n", ImportEntry.show)
   }
 
+  @genType
   let count = (self: t) => self->Array.length
+}
+
+module CodeSection = {
+  @genType
+  type t = array<Func.Body.t>
+
+  @genType
+  let make = (): t => []
+
+  @genType
+  let addFunc = (self: t, f): Func.index => {
+    let _ = self->Js.Array2.push(f)
+    self->Array.length - 1
+  }
+
+  @genType
+  let encode = (bodies: t): Vec.t => {
+    Section.encode(Section.Code, Vec.encodeMany(bodies->Array.map(Func.Body.encode)))
+  }
+
+  @genType
+  let show = (self: t, imports: array<ImportEntry.t>, funcs: array<Func.t>) => {
+    let importFuncNames =
+      imports
+      ->Array.keep(({desc}) =>
+        switch desc {
+        | Func(_) => true
+        }
+      )
+      ->Array.map(({entityName}) => entityName)
+
+    let funcNames = Array.concat(importFuncNames, funcs->Array.map(((name, _, _)) => name))
+
+    Section.show(Section.Code) ++
+    "\n" ++
+    self
+    ->Array.zip(funcs)
+    ->Array.joinWith("\n\n", ((b, (name, sig, _))) => {
+      `${name}\n` ++ b->Func.Body.show(funcNames, sig)
+    })
+  }
 }
 
 module Module = {
@@ -1146,7 +1156,7 @@ module Module = {
       self.globalSection->GlobalSection.show,
       self.exportSection->ExportSection.show,
       self.elementSection->ElementSection.show,
-      self.codeSection->CodeSection.show(self.funcs),
+      self.codeSection->CodeSection.show(self.importSection, self.funcs),
     ]->Array.joinWith("\n\n", x => x)
   }
 }

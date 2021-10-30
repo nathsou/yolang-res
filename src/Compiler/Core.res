@@ -87,7 +87,7 @@ module CoreAst = {
     | CoreLetInExpr(tau, mut, x, valExpr, inExpr) =>
       withType(
         tau,
-        `let ${mut ? "mut" : ""} ${x.contents.name} = ${show(valExpr)} in\n${show(inExpr)}`,
+        `${mut ? "mut" : "let"} ${x.contents.name} = ${show(valExpr)} in\n${show(inExpr)}`,
       )
     | CoreLetRecInExpr(tau, f, args, valExpr, inExpr) =>
       withType(

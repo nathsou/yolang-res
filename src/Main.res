@@ -108,6 +108,33 @@ let _ = switch Node.Process.argv->Array.sliceToEnd(2) {
 
     Js.Promise.resolve()
   }
+| [path, "--debug:ast"] => {
+    let prog = Node.Fs.readFileAsUtf8Sync(path)
+    switch prog->Lib.Debug.debugAst {
+    | Ok(ast) => Js.log(ast)
+    | Error(err) => Js.Console.error(err)
+    }
+
+    Js.Promise.resolve()
+  }
+| [path, "--debug:core"] => {
+    let prog = Node.Fs.readFileAsUtf8Sync(path)
+    switch prog->Lib.Debug.debugCoreAst {
+    | Ok(core) => Js.log(core)
+    | Error(err) => Js.Console.error(err)
+    }
+
+    Js.Promise.resolve()
+  }
+| [path, "--debug:types"] => {
+    let prog = Node.Fs.readFileAsUtf8Sync(path)
+    switch prog->Lib.Debug.debugTypes {
+    | Ok(types) => Js.log(types)
+    | Error(err) => Js.Console.error(err)
+    }
+
+    Js.Promise.resolve()
+  }
 | [path] => {
     let prog = Node.Fs.readFileAsUtf8Sync(path)
     run(prog, None, false)
