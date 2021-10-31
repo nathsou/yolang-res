@@ -1,7 +1,10 @@
 
 fn fact(n) {
-  let aux = (n, acc) -> if n == 0 { acc } else { aux(n - 1, n * acc) };
-  aux(n, 1)
+  if n == 0 {
+    1
+  } else {
+    n * fact(n - 1)
+  }
 }
 
 fn main() {

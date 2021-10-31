@@ -11,7 +11,7 @@ impl Array {
     *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>)
   }
 
-  fn write(self, n, val) unsafe {
+  fn write(mut self, n, val) unsafe {
     *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
   }
 

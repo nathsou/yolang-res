@@ -950,7 +950,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(6, None)))
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(65536, None)))
 
     // add globals
     self.globals

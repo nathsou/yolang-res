@@ -1,0 +1,72 @@
+
+let SIZEOF_U32 = 4;
+
+struct Array {
+  start: Ptr<u32>,
+  mut length: u32,
+}
+
+impl Array {
+  fn read(self, n) unsafe {
+    *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>)
+  }
+
+  fn write(mut self, n, val) unsafe {
+    *(((self.start as u32) + n * SIZEOF_U32) as Ptr<u32>) = val;
+  }
+
+  fn push(mut self, val) {
+    self.write(self.length, val);
+    self.length += 1;
+  }
+}
+
+fn isEven(n) {
+  n & 1 == 0
+}
+
+fn nextCollatz(n) {
+  if isEven(n) { n / 2 } else { 3 * n + 1 }
+}
+
+fn collatzLen(mut lens, n) {
+  let memo = lens.read(n);
+  if memo != 0 {
+    memo
+  } else {
+    let len = collatzLen(lens, nextCollatz(n)) + 1;
+    lens.write(n, len);
+    len
+  }
+}
+
+fn pb14() {
+  // right after the shadow stack
+  let COLLATZ_START = 64 * 1024 as Ptr<u32>;
+  mut collatzLengths = Array {
+    start: COLLATZ_START,
+    length: 1000000,
+  };
+
+  collatzLengths.write(1, 1);
+
+  mut longest = 0;
+  mut longestIndex = 0;
+
+  mut i = 1;
+  while i <= 1000000 {
+    let len = collatzLen(collatzLengths, i);
+    if len > longest {
+      longest = len;
+      longestIndex = i;
+    }
+
+    i += 1;
+  }
+  
+  (longest, longestIndex)
+}
+
+fn main() {
+  pb14()
+}

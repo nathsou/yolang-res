@@ -49,7 +49,7 @@ impl Vec {
     self.capacity = newCap;
   }
 
-  fn push(mut self, val) unsafe {
+  fn push(mut self, val) {
     if self.length + 1 > self.capacity {
       self.grow();
     }
@@ -58,7 +58,7 @@ impl Vec {
     self.length += 1;
   }
 
-  fn pop(mut self) unsafe {
+  fn pop(mut self) {
     if self.length > 0 {
       self.length -= 1;
       self.read(self.length)

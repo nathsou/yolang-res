@@ -2,6 +2,7 @@
   "name": "yolang",
   "version": "0.0.1",
   "type": "module",
+  "description": "Rust-like programming language targetting WebAssembly",
   "scripts": {
     "build": "rescript build",
     "clean": "rescript clean",
@@ -10,15 +11,27 @@
     "clear": "rm src/**/**.bs.js && rm src/**/**.gen.tsx"
   },
   "keywords": [
-    "rescript"
+    "webassembly",
+    "wasm",
+    "compiler",
+    "rescript",
+    "programming-language",
+    "rust",
+    "functional",
+    "traits",
+    "procedural"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "binaryen": "^101.0.0"
+    "binaryen": "^102.0.0"
   },
   "devDependencies": {
-    "gentype": "^3.50.0",
-    "rescript": "^9.1.2"
+    "gentype": "^4.3.0",
+    "rescript": "^9.1.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nathsou/yolang"
   }
 }

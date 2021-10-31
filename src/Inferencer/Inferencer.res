@@ -84,7 +84,13 @@ module StructMatching = {
 // function bodies using 'return' expressions
 let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
 
-let rec collectFuncTypeSubstsWith = (env: Env.t, args: array<Context.nameRef>, body, tau) => {
+let rec collectFuncTypeSubstsWith = (
+  env: Env.t,
+  args: array<Context.nameRef>,
+  body,
+  tau,
+  funcName: option<string>,
+) => {
   let tauRet = CoreExpr.typeOf(body)
   funcRetTyStack->MutableStack.push(tauRet)
 
@@ -93,7 +99,12 @@ let rec collectFuncTypeSubstsWith = (env: Env.t, args: array<Context.nameRef>, b
 
   let fTy = funTy(args->Array.map(x => x.contents.ty), tauRet)
 
-  collectCoreExprTypeSubstsWith(gammaArgs, body, tauRet)->Result.flatMap(sig => {
+  let gammaFArgs = switch funcName {
+  | Some(f) => gammaArgs->Env.addMono(f, fTy)
+  | None => gammaArgs
+  }
+
+  collectCoreExprTypeSubstsWith(gammaFArgs, body, tauRet)->Result.flatMap(sig => {
     let sigFty = substMono(sig, fTy)
     let sigTau = substMono(sig, tau)
     let sigGamma = substEnv(sig, env)
@@ -263,7 +274,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
     })
 
   | CoreFuncExpr(tau, args, body) =>
-    collectFuncTypeSubstsWith(env, args, body, tau)->map(((sig, _, _)) => sig)
+    collectFuncTypeSubstsWith(env, args, body, tau, None)->map(((sig, _, _)) => sig)
   | CoreAppExpr(tau, lhs, args) => {
       let argsTy = args->Array.map(CoreExpr.typeOf)
       let fTy = funTy(argsTy, tau)
@@ -466,14 +477,13 @@ let renameStructImpl = (structName: string, f: string): string => {
 let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string> => {
   switch decl {
   | CoreFuncDecl(f, args, body) =>
-    collectFuncTypeSubstsWith(env, args->Array.map(fst), body, f.contents.ty)->Result.map(((
+    let f = f.contents
+    collectFuncTypeSubstsWith(env, args->Array.map(fst), body, f.ty, Some(f.newName))->Result.map(((
       sig,
       _fTy,
       _fTyGen,
     )) => {
-      // Js.log(f.contents.newName ++ ": " ++ fTy->showMonoTy ++ ", " ++ fTyGen->showPolyTy)
-
-      (substEnv(sig, env->Env.addMono(f.contents.name, f.contents.ty)), sig)
+      (substEnv(sig, env->Env.addMono(f.name, f.ty)), sig)
     })
   | CoreExternFuncDecl({name: f, args, ret}) => {
       let fTy = funTy(args->Array.map(((x, _)) => x.contents.ty), ret)

@@ -148,7 +148,7 @@ module Ast = {
         (mut ? "mut " : "") ++ attr ++ ": " ++ Types.showMonoTy(ty)
       ) ++ "\n}"
     | ImplDecl(structName, decls) =>
-      `${structName} {\n` ++ decls->Array.joinWith("\n\n", showDecl) ++ "\n}"
+      `impl ${structName} {\n` ++ decls->Array.joinWith("\n\n", showDecl) ++ "\n}"
     | ExternFuncDecl({name: f, args, ret}) =>
       `extern fn ${f}(${args->Array.joinWith(", ", ((arg, ty, mut)) =>
           (mut ? "mut " : "") ++ arg ++ ": " ++ Types.showMonoTy(ty)
