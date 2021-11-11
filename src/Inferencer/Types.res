@@ -69,8 +69,7 @@ module Size = {
     | TyConst("Ptr", _) => 4
     | TyConst("Mut", [ty]) => size(ty)
     | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
-    | TyConst("Array", [elemTy, TyConst(len, [])]) =>
-      Int.fromString(len)->Option.getUnsafe * elemTy->size
+    | TyConst("Array", [_elemTy, TyConst(_len, [])]) => 4 // arrays are references
     | TyStruct(_) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
     }

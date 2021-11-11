@@ -73,17 +73,14 @@ impl Sieve {
   }
 }
 
-// right after the shadow stack
-let PRIMES_START = 64 * 1024;
-
 fn main() {
   mut sieve = Sieve {
     primes: Array {
-      start: PRIMES_START as Ptr<u32>,
+      start: [0; 10000] as Ptr<u32>,
       length: 0
     },
     current: 0
   };
 
-  sieve.countUpTo(10000000)
+  sieve.countUpTo(100000)
 }

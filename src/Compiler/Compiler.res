@@ -241,6 +241,23 @@ let emit = (self: t, inst: Wasm.Inst.t): unit => {
   self->getCurrentFuncExn->Func.emit(inst)
 }
 
+let rec shadowStackSizeOf = (ty: Types.monoTy) =>
+  switch ty {
+  | TyStruct(struct) =>
+    switch struct {
+    | NamedStruct(name) =>
+      switch Context.getStruct(name) {
+      | Some({size}) => size
+      | None => raise(CompilerExn.UndeclaredStruct(name))
+      }
+    | PartialStruct(_) => raise(CompilerExn.StructTypeNotMatched(ty))
+    }
+  | TyConst("Tuple", tys) => tys->Array.map(shadowStackSizeOf)->Array.reduce(0, (p, c) => p + c)
+  | TyConst("Array", [elemTy, TyConst(len, [])]) =>
+    Int.fromString(len)->Option.getUnsafe * elemTy->Types.Size.size
+  | _ => 0
+  }
+
 let pushShadowStack = (self: t, bytesCount: int): unit => {
   switch self.blockStack->MutableStack.top {
   | Some({shadowStackDelta}) =>
@@ -776,7 +793,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       })
     }
   | CoreArrayExpr(tau, init) => {
-      let arraySize = Types.Size.size(tau)
+      let arraySize = shadowStackSizeOf(tau)
       self->pushShadowStack(arraySize)
       self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
       let arrayAddrLocalIndex =
@@ -997,7 +1014,51 @@ and storeInMemory = (self: t, expr, offset: int): int => {
   }
 }
 
+// get the minimum size needed to store structs and arrays in the shadow stack
+let minShadowStackSize = (prog: array<CoreDecl.t>): int => {
+  let blockDeltas = MutableStack.make()
+
+  let onEnterBlock = _ => {
+    blockDeltas->MutableStack.push(ref(0))
+  }
+
+  let visitExpr = (expr: CoreExpr.t) => {
+    switch expr {
+    | CoreAst.CoreStructExpr(_) | CoreAst.CoreArrayExpr(_) => {
+        let lhsSize = shadowStackSizeOf(expr->CoreAst.typeOfExpr)
+        let delta = blockDeltas->MutableStack.top->Option.getUnsafe
+        delta.contents = delta.contents + lhsSize
+      }
+    | _ => ()
+    }
+  }
+
+  let onExitBlock = _ => {
+    let delta = blockDeltas->MutableStack.top->Option.getUnsafe
+    blockDeltas->MutableStack.push(ref(-delta.contents))
+  }
+
+  CoreAst.visitProg(
+    visitExpr,
+    prog,
+    ~onEnterBlock=Some(onEnterBlock),
+    ~onExitBlock=Some(onExitBlock),
+  )
+
+  let maxStackSize = ref(0)
+  let currentStackSize = ref(0)
+
+  blockDeltas->MutableStack.forEach(delta => {
+    let delta = delta.contents
+    currentStackSize.contents = currentStackSize.contents + delta
+    maxStackSize.contents = max(maxStackSize.contents, currentStackSize.contents)
+  })
+
+  maxStackSize.contents
+}
+
 let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
+  let shadowStackSize = minShadowStackSize(prog)
   let self = {
     mod: Wasm.Module.make(),
     funcs: [],
@@ -1013,7 +1074,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
       Global.Mutable,
       Some(Wasm.ValueType.I32),
       0,
-      Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(64 * 1024 - 1)]),
+      Wasm.Global.Initializer.fromInstructions([Wasm.Inst.ConstI32(shadowStackSize)]),
     ),
     blockStack: MutableStack.make(),
     externFuncs: [],

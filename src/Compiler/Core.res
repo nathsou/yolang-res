@@ -402,6 +402,86 @@ module CoreAst = {
     | CoreExternFuncDecl(_) => decl
     }
   }
+
+  let rec rewriteExpr = (rewr: expr => expr, expr: expr): expr => {
+    let go = rewriteExpr(rewr)
+    switch expr {
+    | CoreConstExpr(_) => rewr(expr)
+    | CoreUnaryOpExpr(tau, op, expr) => rewr(CoreUnaryOpExpr(tau, op, go(expr)))
+    | CoreBinOpExpr(tau, a, op, b) => rewr(CoreBinOpExpr(tau, go(a), op, go(b)))
+    | CoreVarExpr(_) => rewr(expr)
+    | CoreAssignmentExpr(lhs, rhs) => rewr(CoreAssignmentExpr(go(lhs), go(rhs)))
+    | CoreFuncExpr(tau, args, e) => rewr(CoreFuncExpr(tau, args, go(e)))
+    | CoreLetInExpr(tau, mut, x, e1, e2) => rewr(CoreLetInExpr(tau, mut, x, go(e1), go(e2)))
+    | CoreLetRecInExpr(tau, f, x, e1, e2) => rewr(CoreLetRecInExpr(tau, f, x, go(e1), go(e2)))
+    | CoreAppExpr(tau, lhs, args) => rewr(CoreAppExpr(tau, go(lhs), args->Array.map(go)))
+    | CoreBlockExpr(tau, exprs, lastExpr, safety) =>
+      rewr(
+        CoreBlockExpr(
+          tau,
+          exprs->Array.map(stmt =>
+            switch stmt {
+            | CoreExprStmt(expr) => CoreExprStmt(go(expr))
+            }
+          ),
+          lastExpr->Option.map(go),
+          safety,
+        ),
+      )
+    | CoreIfExpr(tau, cond, thenE, elseE) => rewr(CoreIfExpr(tau, go(cond), go(thenE), go(elseE)))
+    | CoreWhileExpr(cond, body) => rewr(CoreWhileExpr(go(cond), go(body)))
+    | CoreReturnExpr(expr) => rewr(CoreReturnExpr(expr->Option.map(go)))
+    | CoreTypeAssertionExpr(expr, originalTy, assertedTy) =>
+      rewr(CoreTypeAssertionExpr(go(expr), originalTy, assertedTy))
+    | CoreTupleExpr(exprs) => rewr(CoreTupleExpr(exprs->Array.map(go)))
+    | CoreStructExpr(name, attrs) =>
+      rewr(CoreStructExpr(name, attrs->Array.map(((attrName, expr)) => (attrName, go(expr)))))
+    | CoreArrayExpr(tau, init) => {
+        let init = switch init {
+        | ArrayInitRepeat(x, len) => ArrayInitRepeat(go(x), len)
+        | ArrayInitList(elems) => ArrayInitList(elems->Array.map(go))
+        }
+
+        rewr(CoreArrayExpr(tau, init))
+      }
+    | CoreAttributeAccessExpr(tau, lhs, attr) => rewr(CoreAttributeAccessExpr(tau, go(lhs), attr))
+    }
+  }
+  and rewriteDecl = (rewrExpr: expr => expr, decl: decl): decl => {
+    let goExpr = rewriteExpr(rewrExpr)
+
+    switch decl {
+    | CoreFuncDecl(f, args, body) => CoreFuncDecl(f, args, goExpr(body))
+    | CoreGlobalDecl(x, mut, init) => CoreGlobalDecl(x, mut, goExpr(init))
+    | CoreStructDecl(_) => decl
+    | CoreImplDecl(typeName, funcs) =>
+      CoreImplDecl(typeName, funcs->Array.map(((f, args, body)) => (f, args, goExpr(body))))
+    | CoreExternFuncDecl(_) => decl
+    }
+  }
+
+  let visitDecl = (~onEnterBlock=None, ~onExitBlock=None, visitExpr: expr => unit, decl: decl) => {
+    let _ = rewriteDecl(expr => {
+      switch expr {
+      | CoreBlockExpr(_, _, _, _) => {
+          let _ = onEnterBlock->Option.map(f => f(expr))
+          visitExpr(expr)
+          let _ = onExitBlock->Option.map(f => f(expr))
+        }
+      | _ => visitExpr(expr)
+      }
+      expr
+    }, decl)
+  }
+
+  let visitProg = (
+    ~onEnterBlock=None,
+    ~onExitBlock=None,
+    visitExpr: expr => unit,
+    prog: array<decl>,
+  ): unit => {
+    prog->Array.forEach(visitDecl(visitExpr, ~onEnterBlock, ~onExitBlock))
+  }
 }
 
 module CoreExpr = {
