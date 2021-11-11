@@ -18,7 +18,7 @@ module Local = {
 }
 
 let getStructExn = (structTy: Types.structTy) => {
-  open Inferencer.StructMatching
+  open StructMatching
   switch structTy {
   | NamedStruct(name) =>
     switch Context.getStruct(name) {
@@ -45,6 +45,7 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("Fun", _) => [I32]
   | TyConst("Ptr", _) => [I32]
   | TyConst("Tuple", tys) => tys->Array.map(wasmValueTypeOf)->Array.concatMany
+  | TyConst("Array", [_, TyConst(_, [])]) => [I32]
   | TyStruct(structTy) => {
       let {size} = getStructExn(structTy)
       size == 0 ? [] : [I32]
@@ -130,7 +131,7 @@ module Func = {
         Some((idx, mut))
       }
     | None =>
-      switch self.locals->ArrayUtils.getReverseIndexBy(local => local.name == name) {
+      switch self.locals->Utils.Array.getReverseIndexBy(local => local.name == name) {
       | Some(idx) =>
         Some((self.params->Array.length + idx, Array.getExn(self.locals, idx).isMutable))
       | None => None
@@ -198,6 +199,8 @@ type externFuncInfo = {
   ret: Types.monoTy,
 }
 
+type compilerOptions = {useBulkMemoryInstructions: bool}
+
 type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
@@ -208,6 +211,7 @@ type t = {
   stackTop: Global.t,
   blockStack: MutableStack.t<blockInfo>,
   externFuncs: array<externFuncInfo>,
+  options: compilerOptions,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -219,7 +223,7 @@ let getCurrentFuncExn = (self: t): Func.t => {
 
 let findFuncIndexByName = (self: t, name: string): option<(Func.t, Wasm.Func.index)> => {
   self.funcs
-  ->ArrayUtils.getValueAndIndexBy(f => f.name == name)
+  ->Utils.Array.getValueAndIndexBy(f => f.name == name)
   ->Option.map(((f, index)) => {
     let importsCount = self.externFuncs->Array.length
     (f, importsCount + index)
@@ -230,7 +234,7 @@ let findExternalFuncIndexByName = (self: t, name: string): option<(
   externFuncInfo,
   Wasm.Func.index,
 )> => {
-  self.externFuncs->ArrayUtils.getValueAndIndexBy(f => f.name == name)
+  self.externFuncs->Utils.Array.getValueAndIndexBy(f => f.name == name)
 }
 
 let emit = (self: t, inst: Wasm.Inst.t): unit => {
@@ -293,10 +297,16 @@ let endScope = (self: t): unit => {
   let _ = self.blockStack->MutableStack.pop
 }
 
-let declareLocalVar = (self: t, name: string, ty: Types.monoTy, ~isMutable: bool): unit => {
+let declareLocalVar = (
+  self: t,
+  name: string,
+  ty: Types.monoTy,
+  ~isMutable: bool,
+): Wasm.Func.Local.index => {
   let f = self->getCurrentFuncExn
   let localIndex = f->Func.addLocal(name, ty, self.scopeDepth, ~isMutable)
   self->emit(Wasm.Inst.SetLocal(localIndex))
+  localIndex
 }
 
 type varInfo = Local(Wasm.Func.Local.index, bool) | Global(Wasm.Global.index, bool)
@@ -313,10 +323,19 @@ let resolveGlobal = (self: t, name: string): option<Global.t> => {
   self.globals->HashMap.String.get(name)
 }
 
-let resolveVar = (self: t, name: string): option<varInfo> => {
+type localInfo = {
+  index: Wasm.Func.Local.index,
+  isMutable: bool,
+}
+
+let resolveLocal = (self: t, name: string): option<localInfo> => {
   let f = self->getCurrentFuncExn
-  switch f->Func.findLocal(name) {
-  | Some((localIndex, isMutable)) => Some(Local(localIndex, isMutable))
+  f->Func.findLocal(name)->Option.map(((index, mut)) => {index: index, isMutable: mut})
+}
+
+let resolveVar = (self: t, name: string): option<varInfo> => {
+  switch self->resolveLocal(name) {
+  | Some({index, isMutable}) => Some(Local(index, isMutable))
   | None =>
     self
     ->resolveGlobal(name)
@@ -374,7 +393,12 @@ let getStructAttributeOffset = (self: t, structTy: Types.monoTy, attr: string): 
 }
 
 let freshLambdaName = (self: t): Context.nameRef => {
-  Context.freshIdentifier("__lambda" ++ Int.toString(self.funcs->Array.length) ++ "__")
+  Context.freshIdentifier("$lambda" ++ Int.toString(self.funcs->Array.length))
+}
+
+let freshLocalName = (~prefix: string="", self: t): string => {
+  let f = self->getCurrentFuncExn
+  `$${prefix}_local` ++ Int.toString(f.locals->Array.length)
 }
 
 let rec findImmutableBinding = (self: t, expr: CoreExpr.t): option<string> => {
@@ -487,7 +511,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       let x = x.contents
       if !(valExpr->CoreAst.typeOfExpr->Types.Size.isZeroSizedType) {
         self->compileExpr(valExpr)
-        self->declareLocalVar(x.name, x.ty, ~isMutable=mut)
+        let _ = self->declareLocalVar(x.name, x.ty, ~isMutable=mut)
       }
       self->compileExpr(inExpr)
     }
@@ -707,6 +731,8 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       | _ if originalTy == assertedTy => ()
       | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
       | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
+      // TODO: Remove this conversion
+      | (TyConst("Array", _), TyConst("Ptr", [TyConst("u32", [])])) => ()
       | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
       }
 
@@ -744,36 +770,61 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       let offset = ref(0)
 
-      let storeInMemory = expr => {
-        let storeNbytes = (n: int) => {
-          // TODO: handle alignment
-          self->compileExpr(expr)
-          self->emit(Wasm.Inst.StoreI32(0, offset.contents))
-          offset := offset.contents + n
-        }
+      attrs->Array.forEach(((_, expr)) => {
+        let bytes = self->storeInMemory(expr, offset.contents)
+        offset.contents = offset.contents + bytes
+      })
+    }
+  | CoreArrayExpr(tau, init) => {
+      let arraySize = Types.Size.size(tau)
+      self->pushShadowStack(arraySize)
+      self->emit(Wasm.Inst.GetGlobal(self.stackTop.index))
+      let arrayAddrLocalIndex =
+        self->declareLocalVar(
+          self->freshLocalName(~prefix="arrayAddr"),
+          Types.u32Ty,
+          ~isMutable=true,
+        )
 
-        let ty = expr->CoreExpr.typeOf
-        switch ty {
-        | Types.TyConst("u32", [])
-        | Types.TyConst("bool", [])
-        | Types.TyConst("Fun", _)
-        | Types.TyConst("Ptr", [_]) =>
-          storeNbytes(4)
-        | Types.TyConst("()", []) => ()
-        | Types.TyStruct(structTy) => {
-            let _ = getStructExn(structTy)
-            storeNbytes(4)
-          }
-        | _ =>
-          raise(
-            CompilerExn.Unimplemented(`cannot store ${Types.showMonoTy(ty)} in the shadow stack`),
-          )
+      switch init {
+      | CoreAst.ArrayInitRepeat(expr, _) => {
+          self->emit(Wasm.Inst.ConstI32(0))
+          let addrLocalIndex =
+            self->declareLocalVar(
+              self->freshLocalName(~prefix="addr"),
+              Types.u32Ty,
+              ~isMutable=true,
+            )
+
+          self->emit(Wasm.Inst.Block(Wasm.BlockReturnType.Void))
+          self->emit(Wasm.Inst.Loop(Wasm.BlockReturnType.Void))
+          self->emit(Wasm.Inst.GetLocal(addrLocalIndex))
+          self->emit(Wasm.Inst.ConstI32(arraySize))
+          self->emit(Wasm.Inst.EqI32)
+          self->emit(Wasm.Inst.BranchIf(1))
+          self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
+          self->emit(Wasm.Inst.GetLocal(addrLocalIndex))
+          self->emit(Wasm.Inst.AddI32)
+          let elemSize = self->storeInMemory(expr, 0)
+          self->emit(Wasm.Inst.GetLocal(addrLocalIndex))
+          self->emit(Wasm.Inst.ConstI32(elemSize))
+          self->emit(Wasm.Inst.AddI32)
+          self->emit(Wasm.Inst.SetLocal(addrLocalIndex))
+          self->emit(Wasm.Inst.Branch(0))
+          self->emit(Wasm.Inst.End)
+          self->emit(Wasm.Inst.End)
+        }
+      | CoreAst.ArrayInitList(elems) => {
+          let offset = ref(0)
+          elems->Array.forEach(expr => {
+            self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
+            let elemSize = self->storeInMemory(expr, offset.contents)
+            offset.contents = offset.contents + elemSize
+          })
         }
       }
 
-      attrs->Array.forEach(((_, expr)) => {
-        storeInMemory(expr)
-      })
+      self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
     }
   | CoreAttributeAccessExpr(_, lhs, attr) =>
     switch self->getStructAttributeOffset(lhs->CoreAst.typeOfExpr, attr) {
@@ -921,6 +972,31 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   }
 }
 
+and storeInMemory = (self: t, expr, offset: int): int => {
+  let storeNbytes = (n: int) => {
+    // TODO: handle alignment
+    self->compileExpr(expr)
+    self->emit(Wasm.Inst.StoreI32(0, offset))
+    n
+  }
+
+  let ty = expr->CoreExpr.typeOf
+  switch ty {
+  | Types.TyConst("u32", [])
+  | Types.TyConst("bool", [])
+  | Types.TyConst("Fun", _)
+  | Types.TyConst("Ptr", [_]) =>
+    storeNbytes(4)
+  | Types.TyConst("()", []) => 0
+  | Types.TyStruct(structTy) => {
+      let _ = getStructExn(structTy)
+      storeNbytes(4)
+    }
+  | _ =>
+    raise(CompilerExn.Unimplemented(`cannot store ${Types.showMonoTy(ty)} in the shadow stack`))
+  }
+}
+
 let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
   let self = {
     mod: Wasm.Module.make(),
@@ -941,6 +1017,9 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     ),
     blockStack: MutableStack.make(),
     externFuncs: [],
+    options: {
+      useBulkMemoryInstructions: false,
+    },
   }
 
   // add the STACK_TOP global
@@ -950,7 +1029,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(65536, None)))
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(64, None)))
 
     // add globals
     self.globals

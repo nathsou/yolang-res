@@ -67,7 +67,8 @@ module Const = {
 type blockSafety = Safe | Unsafe
 
 module Ast = {
-  type rec expr =
+  type rec arrayInit = ArrayInitRepeat(expr, int) | ArrayInitList(array<expr>)
+  and expr =
     | ConstExpr(Const.t)
     | UnaryOpExpr(UnaryOp.t, expr)
     | BinOpExpr(expr, BinOp.t, expr)
@@ -83,6 +84,7 @@ module Ast = {
     | TypeAssertionExpr(expr, Types.monoTy)
     | TupleExpr(array<expr>)
     | StructExpr(string, array<(string, expr)>)
+    | ArrayExpr(arrayInit)
     | AttributeAccessExpr(expr, string)
   and stmt = LetStmt(string, bool, expr, option<Types.monoTy>) | ExprStmt(expr)
 
@@ -130,6 +132,11 @@ module Ast = {
       name ++
       " {\n" ++
       attrs->Array.joinWith(", ", ((attr, val)) => attr ++ ": " ++ showExpr(val)) ++ "\n}"
+    | ArrayExpr(init) =>
+      switch init {
+      | ArrayInitRepeat(x, len) => `[${showExpr(x)}; ${Int.toString(len)}]`
+      | ArrayInitList(elems) => `[${elems->Array.joinWith(", ", showExpr)}]`
+      }
     | AttributeAccessExpr(expr, attr) => showExpr(expr) ++ "." ++ attr
     }
 

@@ -1,0 +1,11 @@
+
+let SIZEOF_U32 = 4;
+
+fn main() {
+  let elems = [23; 100];
+  let elems2 = [1, 2, 3, 4];
+
+  unsafe {
+    *((((elems as Ptr<u32>) as u32) + 3 * SIZEOF_U32) as Ptr<u32>)
+  }
+}

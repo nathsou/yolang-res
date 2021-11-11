@@ -56,6 +56,22 @@ module Vec = {
     Array.concat(uleb128(vecs->Array.length), Array.concatMany(vecs))
 }
 
+module I32 = {
+  @genType
+  type t = int
+
+  @genType
+  let encode = (n: t): Vec.t => sleb128(n)
+}
+
+module I64 = {
+  @genType
+  type t = int
+
+  @genType
+  let encode = (n: t): Vec.t => sleb128(n)
+}
+
 module F32 = {
   @genType
   type t = float
@@ -270,86 +286,90 @@ module Inst = {
     | ShlI32
     | ShrI32Signed
     | ShrI32Unsigned
+    | InitMemory(int)
+    | DropData(int)
 
   @genType
   let info = inst =>
     switch inst {
-    | ConstI32(n) => (0x41, `i32.const ${Int.toString(n)}`)
-    | ConstI64(n) => (0x42, `i64.const ${Int.toString(n)}`)
-    | ConstF32(x) => (0x43, `i64.const ${Float.toString(x)}`)
-    | ConstF64(x) => (0x44, `i64.const ${Float.toString(x)}`)
-    | If(_) => (0x04, "if")
-    | BranchIf(lvl) => (0x0d, `br_if ${Int.toString(lvl)}`)
-    | Branch(lvl) => (0x0c, `br ${Int.toString(lvl)}`)
-    | Block(_) => (0x02, "block")
-    | Loop(_) => (0x03, "loop")
-    | Else => (0x05, "else")
-    | End => (0x0b, "end")
-    | Return => (0x0f, "return")
-    | GetLocal(idx) => (0x20, "local.get " ++ Int.toString(idx))
-    | SetLocal(idx) => (0x21, "local.set " ++ Int.toString(idx))
-    | TeeLocal(idx) => (0x22, "local.tee " ++ Int.toString(idx))
-    | GetGlobal(idx) => (0x23, "global.get " ++ Int.toString(idx))
-    | SetGlobal(idx) => (0x24, "global.set " ++ Int.toString(idx))
-    | Call(funcIdx) => (0x10, "call " ++ Int.toString(funcIdx))
+    | ConstI32(n) => ([0x41], `i32.const ${Int.toString(n)}`)
+    | ConstI64(n) => ([0x42], `i64.const ${Int.toString(n)}`)
+    | ConstF32(x) => ([0x43], `i64.const ${Float.toString(x)}`)
+    | ConstF64(x) => ([0x44], `i64.const ${Float.toString(x)}`)
+    | If(_) => ([0x04], "if")
+    | BranchIf(lvl) => ([0x0d], `br_if ${Int.toString(lvl)}`)
+    | Branch(lvl) => ([0x0c], `br ${Int.toString(lvl)}`)
+    | Block(_) => ([0x02], "block")
+    | Loop(_) => ([0x03], "loop")
+    | Else => ([0x05], "else")
+    | End => ([0x0b], "end")
+    | Return => ([0x0f], "return")
+    | GetLocal(idx) => ([0x20], "local.get " ++ Int.toString(idx))
+    | SetLocal(idx) => ([0x21], "local.set " ++ Int.toString(idx))
+    | TeeLocal(idx) => ([0x22], "local.tee " ++ Int.toString(idx))
+    | GetGlobal(idx) => ([0x23], "global.get " ++ Int.toString(idx))
+    | SetGlobal(idx) => ([0x24], "global.set " ++ Int.toString(idx))
+    | Call(funcIdx) => ([0x10], "call " ++ Int.toString(funcIdx))
     | CallIndirect(typeIdx, tableIdx) => (
-        0x11,
+        [0x11],
         `call_indirect [typeIndex=${Int.toString(typeIdx)}, tableIndex=${Int.toString(tableIdx)}]`,
       )
     | LoadI32(alignment, offset) => (
-        0x28,
+        [0x28],
         `i32.load (alignment=${Int.toString(alignment)}, offset=${Int.toString(offset)})`,
       )
     | StoreI32(alignment, offset) => (
-        0x36,
+        [0x36],
         `i32.store (alignment=${Int.toString(alignment)}, offset=${Int.toString(offset)})`,
       )
-    | Drop => (0x1a, "drop")
-    | AddI32 => (0x6a, "i32.add")
-    | SubI32 => (0x6b, "i32.sub")
-    | MulI32 => (0x6c, "i32.mul")
-    | DivI32Signed => (0x6d, "i32.div_u")
-    | DivI32Unsigned => (0x6e, "i32.div_s")
-    | RemI32Signed => (0x6f, "i32.rem_s")
-    | RemI32Unsigned => (0x70, "i32.rem_u")
-    | EqzI32 => (0x45, "i32.eqz")
-    | EqI32 => (0x46, "i32.eq")
-    | EqI64 => (0x51, "i64.eq")
-    | EqF32 => (0x5b, "f32.eq")
-    | EqF64 => (0x61, "f64.eq")
-    | NeI32 => (0x47, "i32.ne")
-    | NeI64 => (0x52, "i64.ne")
-    | NeF32 => (0x5c, "f32.ne")
-    | NeF64 => (0x62, "f64.ne")
-    | LeI32Signed => (0x4c, "i32.le_s")
-    | LeI32Unsigned => (0x4d, "i32.le_u")
-    | LeI64Signed => (0x57, "i64.le_s")
-    | LeI64Unsigned => (0x58, "i64.le_u")
-    | LeF32 => (0x5f, "f32.le")
-    | LeF64 => (0x65, "f64.le")
-    | GeI32Signed => (0x4e, "i32.ge_s")
-    | GeI32Unsigned => (0x4f, "i32.ge_u")
-    | GeI64Signed => (0x59, "i64.ge_s")
-    | GeI64Unsigned => (0x5a, "i64.ge_u")
-    | GeF32 => (0x60, "f32.ge")
-    | GeF64 => (0x66, "f64.ge")
-    | LtI32Signed => (0x48, "i32.lt_s")
-    | LtI32Unsigned => (0x49, "i32.lt_u")
-    | LtI64Signed => (0x53, "i64.lt_s")
-    | LtI64Unsigned => (0x54, "i64.lt_u")
-    | LtF32 => (0x5d, "f32.lt")
-    | LtF64 => (0x63, "f64.lt")
-    | GtI32Signed => (0x4a, "i32.gt_s")
-    | GtI32Unsigned => (0x4b, "i32.gt_u")
-    | GtI64Signed => (0x55, "i64.gt_s")
-    | GtI64Unsigned => (0x56, "i64.gt_u")
-    | GtF32 => (0x5e, "f32.gt")
-    | GtF64 => (0x64, "f64.gt")
-    | AndI32 => (0x71, "i32.and")
-    | OrI32 => (0x72, "i32.or")
-    | ShlI32 => (0x74, "i32.shl")
-    | ShrI32Signed => (0x75, "i32.shr_s")
-    | ShrI32Unsigned => (0x76, "i32.shr_u")
+    | Drop => ([0x1a], "drop")
+    | AddI32 => ([0x6a], "i32.add")
+    | SubI32 => ([0x6b], "i32.sub")
+    | MulI32 => ([0x6c], "i32.mul")
+    | DivI32Signed => ([0x6d], "i32.div_u")
+    | DivI32Unsigned => ([0x6e], "i32.div_s")
+    | RemI32Signed => ([0x6f], "i32.rem_s")
+    | RemI32Unsigned => ([0x70], "i32.rem_u")
+    | EqzI32 => ([0x45], "i32.eqz")
+    | EqI32 => ([0x46], "i32.eq")
+    | EqI64 => ([0x51], "i64.eq")
+    | EqF32 => ([0x5b], "f32.eq")
+    | EqF64 => ([0x61], "f64.eq")
+    | NeI32 => ([0x47], "i32.ne")
+    | NeI64 => ([0x52], "i64.ne")
+    | NeF32 => ([0x5c], "f32.ne")
+    | NeF64 => ([0x62], "f64.ne")
+    | LeI32Signed => ([0x4c], "i32.le_s")
+    | LeI32Unsigned => ([0x4d], "i32.le_u")
+    | LeI64Signed => ([0x57], "i64.le_s")
+    | LeI64Unsigned => ([0x58], "i64.le_u")
+    | LeF32 => ([0x5f], "f32.le")
+    | LeF64 => ([0x65], "f64.le")
+    | GeI32Signed => ([0x4e], "i32.ge_s")
+    | GeI32Unsigned => ([0x4f], "i32.ge_u")
+    | GeI64Signed => ([0x59], "i64.ge_s")
+    | GeI64Unsigned => ([0x5a], "i64.ge_u")
+    | GeF32 => ([0x60], "f32.ge")
+    | GeF64 => ([0x66], "f64.ge")
+    | LtI32Signed => ([0x48], "i32.lt_s")
+    | LtI32Unsigned => ([0x49], "i32.lt_u")
+    | LtI64Signed => ([0x53], "i64.lt_s")
+    | LtI64Unsigned => ([0x54], "i64.lt_u")
+    | LtF32 => ([0x5d], "f32.lt")
+    | LtF64 => ([0x63], "f64.lt")
+    | GtI32Signed => ([0x4a], "i32.gt_s")
+    | GtI32Unsigned => ([0x4b], "i32.gt_u")
+    | GtI64Signed => ([0x55], "i64.gt_s")
+    | GtI64Unsigned => ([0x56], "i64.gt_u")
+    | GtF32 => ([0x5e], "f32.gt")
+    | GtF64 => ([0x64], "f64.gt")
+    | AndI32 => ([0x71], "i32.and")
+    | OrI32 => ([0x72], "i32.or")
+    | ShlI32 => ([0x74], "i32.shl")
+    | ShrI32Signed => ([0x75], "i32.shr_s")
+    | ShrI32Unsigned => ([0x76], "i32.shr_u")
+    | InitMemory(d) => ([0xfc, 0x08], "memory.init " ++ Int.toString(d))
+    | DropData(d) => ([0xfc, 0x09], "data.drop " ++ Int.toString(d))
     }
 
   @genType
@@ -399,20 +419,22 @@ module Inst = {
   @genType
   let encode = inst =>
     switch inst {
-    | ConstI32(n) => Array.concat([inst->opcode], sleb128(n))
-    | ConstI64(n) => Array.concat([inst->opcode], sleb128(n))
-    | ConstF32(x) => Array.concat([inst->opcode], F32.encode(x))
-    | ConstF64(x) => Array.concat([inst->opcode], F64.encode(x))
+    | ConstI32(n) => Array.concat(inst->opcode, I32.encode(n))
+    | ConstI64(n) => Array.concat(inst->opcode, I64.encode(n))
+    | ConstF32(x) => Array.concat(inst->opcode, F32.encode(x))
+    | ConstF64(x) => Array.concat(inst->opcode, F64.encode(x))
     | GetLocal(n) | SetLocal(n) | TeeLocal(n) | GetGlobal(n) | SetGlobal(n) =>
-      Array.concat([inst->opcode], uleb128(n))
-    | If(bt) | Block(bt) | Loop(bt) => Array.concat([inst->opcode], bt->BlockReturnType.encode)
-    | BranchIf(depth) | Branch(depth) => Array.concat([inst->opcode], uleb128(depth))
-    | Call(funcIdx) => Array.concat([inst->opcode], uleb128(funcIdx))
+      Array.concat(inst->opcode, uleb128(n))
+    | If(bt) | Block(bt) | Loop(bt) => Array.concat(inst->opcode, bt->BlockReturnType.encode)
+    | BranchIf(depth) | Branch(depth) => Array.concat(inst->opcode, uleb128(depth))
+    | Call(funcIdx) => Array.concat(inst->opcode, uleb128(funcIdx))
     | CallIndirect(typeIdx, tableIdx) =>
-      Array.concatMany([[inst->opcode], uleb128(typeIdx), uleb128(tableIdx)])
+      Array.concatMany([inst->opcode, uleb128(typeIdx), uleb128(tableIdx)])
     | LoadI32(alignment, offset) | StoreI32(alignment, offset) =>
-      Array.concatMany([[inst->opcode], uleb128(alignment), uleb128(offset)])
-    | _ => [inst->opcode]
+      Array.concatMany([inst->opcode, uleb128(alignment), uleb128(offset)])
+    | InitMemory(dataIdx) => Array.concatMany([inst->opcode, uleb128(dataIdx), [0x00]])
+    | DropData(dataIdx) => Array.concat(inst->opcode, uleb128(dataIdx))
+    | _ => inst->opcode
     }
 }
 
@@ -1050,6 +1072,77 @@ module CodeSection = {
   }
 }
 
+module Data = {
+  type index = int
+  type memoryIndex = int
+  type offset = int
+
+  module Mode = {
+    type t = Passive | Active(memoryIndex, offset)
+
+    let show = (mode: t) => {
+      switch mode {
+      | Passive => "passive"
+      | Active(m, offset) => `active memIndex: ${Int.toString(m)} offset: ${Int.toString(offset)}`
+      }
+    }
+  }
+
+  module Segment = {
+    type t = {init: array<byte>, mode: Mode.t}
+
+    let make = (init: array<byte>, mode: Mode.t): t => {
+      init: init,
+      mode: mode,
+    }
+
+    let show = ({init, mode}: t) => {
+      `segment len: ${Int.toString(init->Array.length)} mode: ${mode->Mode.show}`
+    }
+
+    let encode = ({init, mode}: t): Vec.t => {
+      switch mode {
+      | Active(0, offset) =>
+        Array.concatMany([
+          [0x00],
+          Inst.ConstI32(offset)->Inst.encode,
+          Inst.End->Inst.encode,
+          Vec.encode(init),
+        ])
+      | Passive => Array.concat([0x01], Vec.encode(init))
+      | Active(m, offset) =>
+        Array.concatMany([
+          [0x02],
+          uleb128(m),
+          Inst.ConstI32(offset)->Inst.encode,
+          Inst.End->Inst.encode,
+          Vec.encode(init),
+        ])
+      }
+    }
+  }
+
+  module Section = {
+    type t = array<Segment.t>
+
+    let make = (): t => []
+
+    let add = (self: t, seg: Segment.t): index => {
+      let index = self->Js.Array2.push(seg) - 1
+      index
+    }
+
+    let show = (segs: t) => {
+      Section.show(Section.Data) ++ "\n" ++ segs->Array.joinWith("\n\n", Segment.show)
+    }
+
+    @genType
+    let encode = (segs: t): Vec.t => {
+      Section.encode(Section.Data, Vec.encodeMany(segs->Array.map(Segment.encode)))
+    }
+  }
+}
+
 module Module = {
   @genType
   type t = {
@@ -1062,6 +1155,7 @@ module Module = {
     exportSection: ExportSection.t,
     elementSection: ElementSection.t,
     codeSection: CodeSection.t,
+    dataSection: Data.Section.t,
     funcs: array<Func.t>,
   }
 
@@ -1076,6 +1170,7 @@ module Module = {
     exportSection: ExportSection.make(),
     elementSection: ElementSection.make(),
     codeSection: CodeSection.make(),
+    dataSection: Data.Section.make(),
     funcs: [],
   }
 
@@ -1133,6 +1228,11 @@ module Module = {
   }
 
   @genType
+  let addData = (self: t, segment: Data.Segment.t): Data.index => {
+    self.dataSection->Data.Section.add(segment)
+  }
+
+  @genType
   let encode = (self: t): Vec.t => {
     Array.concatMany([
       [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00], // magic cookie "\0asm" and wasm version
@@ -1145,6 +1245,7 @@ module Module = {
       self.exportSection->ExportSection.encode,
       self.elementSection->ElementSection.encode,
       self.codeSection->CodeSection.encode,
+      self.dataSection->Data.Section.encode,
     ])
   }
 
@@ -1165,6 +1266,7 @@ module Module = {
       self.exportSection->ExportSection.show,
       self.elementSection->ElementSection.show,
       self.codeSection->CodeSection.show(self.importSection, self.funcs),
+      self.dataSection->Data.Section.show,
     ]->Array.joinWith("\n\n", x => x)
   }
 }

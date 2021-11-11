@@ -2,17 +2,17 @@
 # yarn lockfile v1
 
 
-binaryen@^101.0.0:
-  version "101.0.0"
-  resolved "https://registry.yarnpkg.com/binaryen/-/binaryen-101.0.0.tgz#42a9e4cc7a22e2c1d75a31d28005a9b518b2c555"
-  integrity sha512-FRmVxvrR8jtcf0qcukNAPZDM3dZ2sc9GmA/hKxBI7k3fFzREKh1cAs+ruQi+ITTKz7u/AuFMuVnbJwTh0ef/HQ==
+binaryen@^102.0.0:
+  version "102.0.0"
+  resolved "https://registry.yarnpkg.com/binaryen/-/binaryen-102.0.0.tgz#fe689e2246ba9565ed06cb21014085932b4ff0d1"
+  integrity sha512-lXemQSay90n49CHlUgWl68/q2/htIJrVrvUkNP3U38RkcyvaqBurIhFadf7NF5v7CT1HzmNufiURE6WRNF1l5g==
 
-gentype@^3.50.0:
-  version "3.50.0"
-  resolved "https://registry.yarnpkg.com/gentype/-/gentype-3.50.0.tgz#68b4de22e885c26e44b110b41c2675e704f1f896"
-  integrity sha512-EKZzbS4HBuw80zDm5ZJxDdfoGw4nYClTgkv4vp8/db1MXmvCdJSA2NuvxNBYF8i5VqYccdQWzNGClmhWpTFWFQ==
+gentype@^4.3.0:
+  version "4.3.0"
+  resolved "https://registry.yarnpkg.com/gentype/-/gentype-4.3.0.tgz#ebac3abcdde2ce2a8fc85611b11568a4cb349c8d"
+  integrity sha512-lqkc1ZS/Iog4uslRD4De47OV54Hu61vEBsirMKxRlgHIRvm8u6RqsdKxJ7JdJdrzmtKgPNvq1He69SozzW+6dQ==
 
-rescript@^9.1.2:
+rescript@^9.1.4:
   version "9.1.4"
   resolved "https://registry.yarnpkg.com/rescript/-/rescript-9.1.4.tgz#1eb126f98d6c16942c0bf0df67c050198e580515"
   integrity sha512-aXANK4IqecJzdnDpJUsU6pxMViCR5ogAxzuqS0mOr8TloMnzAjJFu63fjD6LCkWrKAhlMkFFzQvVQYaAaVkFXw==

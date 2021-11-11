@@ -4,7 +4,7 @@ mut HEAP_HEAD = 65536;
 // https://fitzgeraldnick.com/2018/02/09/wee-alloc.html
 
 fn allocate(bytes) {
-  HEAP_HEAD = HEAP_HEAD + bytes
+  HEAP_HEAD += bytes;
 }
 
 struct MinMax {
@@ -52,7 +52,7 @@ impl MinMax {
 
 fn main() {
   mut m1 = MinMax.from(1789, 1998);
-  let res = (m1.ref.min + m1.ref.max, HEAP_HEAD, m1.refsCount);
+  let res = (m1.ref.min, m1.ref.max, HEAP_HEAD, m1.refsCount);
   m1.drop();
 
   res

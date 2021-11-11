@@ -65,13 +65,27 @@ let primitiveType = alt(
 
 let primitiveTypeOrParens = alt(primitiveType, parens(type_))
 
+let extractNat = (expr: Ast.expr): int => {
+  switch expr {
+  | Ast.ConstExpr(U32Const(n)) => n
+  | _ => -1
+  }
+}
+
+let arrayType = alt(
+  sqBrackets(seq3(type_, token(Symbol(SemiColon)), int))->map(((ty, _, len)) =>
+    Types.arrayTy(ty, extractNat(len))
+  ),
+  primitiveTypeOrParens,
+)
+
 let funcType = alt(
   seq3(
     alt(parens(commas(type_)), primitiveTypeOrParens->map(ty => [ty])),
     token(Symbol(RightArrow)),
     type_,
   )->map(((args, _, ret)) => Types.funTy(args, ret)),
-  primitiveTypeOrParens,
+  arrayType,
 )
 
 let compoundType = alt(
@@ -255,6 +269,17 @@ block :=
     lambda,
   ).contents
 
+module ArrayInit = {
+  let repeatExpr =
+    sqBrackets(seq3(expr, token(Symbol(SemiColon)), int))->map(((x, _, len)) => Ast.ArrayExpr(
+      Ast.ArrayInitRepeat(x, extractNat(len)),
+    ))
+
+  let listExpr = sqBrackets(commas(expr))->map(elems => Ast.ArrayExpr(Ast.ArrayInitList(elems)))
+}
+
+let arrayExpr = alt(alt(ArrayInit.repeatExpr, ArrayInit.listExpr), block)
+
 let structExpr = alt(
   seq4(
     uppercaseIdent,
@@ -265,7 +290,7 @@ let structExpr = alt(
     name,
     entries->Array.map(((attr, _, ty)) => (attr, ty)),
   )),
-  block,
+  arrayExpr,
 )
 
 let assignmentOp: parser<[#eq | #plusEq | #minusEq | #starEq | #divEq | #modEq]> = anyOf([

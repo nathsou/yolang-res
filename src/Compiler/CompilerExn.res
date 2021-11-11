@@ -12,6 +12,7 @@ exception UndeclaredStruct(string)
 exception InvalidAttributeAccess(string, Types.monoTy)
 exception StructTypeNotMatched(Types.monoTy)
 exception AmibguousStruct(Types.Attributes.t, array<Context.Struct.t>)
+exception InvalidArrayInitExpr(Core.CoreExpr.t)
 
 let show = exn =>
   switch exn {
@@ -31,8 +32,7 @@ let show = exn =>
   | UndeclaredStruct(name) => `undeclared struct "${name}"`
   | InvalidAttributeAccess(attr, ty) => `${attr} does not exist for type "${Types.showMonoTy(ty)}"`
   | StructTypeNotMatched(ty) => `No struct declaration matches type ${Types.showMonoTy(ty)}`
-  | AmibguousStruct(attrs, matches) =>
-    Inferencer.StructMatching.ambiguousMatchesError(attrs, matches)
+  | AmibguousStruct(attrs, matches) => StructMatching.ambiguousMatchesError(attrs, matches)
   | Core.CoreAst.UndeclaredIdentifer(name) => `identifier "${name}" not found`
   | Core.CoreAst.UnexpectedDeclarationInImplBlock(decl) =>
     `unexpected declaration in impl block: ${Core.CoreDecl.show(decl)}`

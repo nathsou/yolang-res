@@ -18,7 +18,10 @@ const runModule = async (bytes: Uint8Array): Promise<string> => {
   });
 
   if ('main' in instance.exports) {
-    return (instance.exports as { main: () => any }).main();
+    console.time('run');
+    const res = (instance.exports as { main: () => any }).main();
+    console.timeEnd('run');
+    return res;
   } else {
     return 'Error: main function not found, exported functions are: ' + Object.keys(instance.exports).join(', ');
   }

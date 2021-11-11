@@ -85,5 +85,5 @@ fn main() {
     current: 0
   };
 
-  sieve.countUpTo(1000000)
+  sieve.countUpTo(10000000)
 }

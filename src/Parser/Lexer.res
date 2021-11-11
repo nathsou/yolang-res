@@ -69,6 +69,8 @@ let symbol = anyOf([
   char('=')->map(_ => Symbol(Eq)),
   char('{')->map(_ => Symbol(Lbracket)),
   char('}')->map(_ => Symbol(Rbracket)),
+  char('[')->map(_ => Symbol(LSqBracket)),
+  char(']')->map(_ => Symbol(RSqBracket)),
   char(':')->map(_ => Symbol(Colon)),
   char('!')->map(_ => Symbol(Bang)),
   char('.')->map(_ => Symbol(Dot)),

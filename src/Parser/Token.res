@@ -8,6 +8,8 @@ module Symbol = {
     | RightArrow
     | Lbracket
     | Rbracket
+    | LSqBracket
+    | RSqBracket
     | Colon
     | Plus
     | Minus
@@ -42,6 +44,8 @@ module Symbol = {
     | RightArrow => "->"
     | Lbracket => "{"
     | Rbracket => "}"
+    | LSqBracket => "["
+    | RSqBracket => "]"
     | Colon => ":"
     | Plus => "+"
     | Minus => "-"

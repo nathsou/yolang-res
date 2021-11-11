@@ -1,5 +1,4 @@
 open Belt
-open FuncUtils
 
 // TODO: traits
 // http://smallcultfollowing.com/babysteps/blog/2017/01/26/lowering-rust-traits-to-logic/
@@ -44,6 +43,11 @@ let funTy = (args, ret) => TyConst("Fun", Array.concat(args, [ret]))
 
 let tupleTy = tys => TyConst("Tuple", tys)
 
+let arrayTy = (elemTy: monoTy, len: int) => TyConst(
+  "Array",
+  [elemTy, TyConst(Int.toString(len), [])],
+)
+
 let pointerTy = ty => TyConst("Ptr", [ty])
 
 let isReferencedTy = ty =>
@@ -65,6 +69,8 @@ module Size = {
     | TyConst("Ptr", _) => 4
     | TyConst("Mut", [ty]) => size(ty)
     | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
+    | TyConst("Array", [elemTy, TyConst(len, [])]) =>
+      Int.fromString(len)->Option.getUnsafe * elemTy->size
     | TyStruct(_) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
     }
@@ -151,7 +157,7 @@ let rec freeTyVarsMonoTy = (ty: monoTy) => {
     | PartialStruct(attrs) =>
       attrs
       ->Attributes.toArray
-      ->Array.map(snd->compose(freeTyVarsMonoTy))
+      ->Array.map(snd->Utils.Func.compose(freeTyVarsMonoTy))
       ->Array.reduce(empty, union)
     }
   }
@@ -185,26 +191,21 @@ let showTyVar = n => {
 let rec showMonoTy = ty =>
   switch ty {
   | TyVar(tau) => showTyVar(tau)
-  | TyConst(name, args) =>
-    switch args {
-    | [] => name
-    | _ =>
-      switch name {
-      | "Fun" => {
-          let (args, ret) = (
-            args->Array.slice(~offset=0, ~len=args->Array.length - 1),
-            args->Array.getExn(args->Array.length - 1),
-          )
+  | TyConst(name, []) => name
+  | TyConst("Fun", args) => {
+      let (args, ret) = (
+        args->Array.slice(~offset=0, ~len=args->Array.length - 1),
+        args->Array.getExn(args->Array.length - 1),
+      )
 
-          switch args {
-          | [arg] => `${showMonoTy(arg)} -> ${showMonoTy(ret)}`
-          | _ => `(${args->Array.joinWith(", ", showMonoTy)}) -> ${showMonoTy(ret)}`
-          }
-        }
-      | "Tuple" => `(${args->Array.joinWith(", ", showMonoTy)})`
-      | _ => `${name}<${args->Array.joinWith(", ", showMonoTy)}>`
+      switch args {
+      | [arg] => `${showMonoTy(arg)} -> ${showMonoTy(ret)}`
+      | _ => `(${args->Array.joinWith(", ", showMonoTy)}) -> ${showMonoTy(ret)}`
       }
     }
+  | TyConst("Tuple", args) => `(${args->Array.joinWith(", ", showMonoTy)})`
+  | TyConst("Array", [elemTy, TyConst(len, [])]) => `[${showMonoTy(elemTy)}; ${len}]`
+  | TyConst(name, args) => `${name}<${args->Array.joinWith(", ", showMonoTy)}>`
   | TyStruct(structTy) =>
     switch structTy {
     | NamedStruct(name) => name

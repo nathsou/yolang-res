@@ -46,40 +46,6 @@ let unaryOpTy = (op: Ast.UnaryOp.t): polyTy => {
   }
 }
 
-module StructMatching = {
-  type t = NoMatch | OneMatch(Context.Struct.t) | MultipleMatches(array<Context.Struct.t>)
-
-  let ambiguousMatchesError = (attributes: Attributes.t, matches: array<Context.Struct.t>) => {
-    "cannot infer struct type: inferred type " ++
-    attributes->Attributes.show(showMonoTy) ++
-    " matches " ++
-    matches->Array.joinWith(", ", ({name}) => name)
-  }
-
-  // matches a PartialStruct with declared structures
-  let findMatchingStruct = (attributes: Attributes.t): t => {
-    let matches =
-      Context.context.structs
-      ->HashMap.String.valuesToArray
-      ->Array.keepMap(struct => {
-        unify(
-          TyStruct(PartialStruct(attributes)),
-          struct->Context.Struct.toPartialStructType(Context.freshTyVarIndex()),
-        )->Result.mapWithDefault(None, _ => Some(struct))
-      })
-
-    switch matches {
-    | [s] => OneMatch(s)
-    | _ =>
-      if matches->Array.length == 0 {
-        NoMatch
-      } else {
-        MultipleMatches(matches)
-      }
-    }
-  }
-}
-
 // keep a stack of return types of functions to correctly infer the types for
 // function bodies using 'return' expressions
 let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
@@ -350,7 +316,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
           })
 
         // check that there are no extraneous attributes
-        let extraAttr = attrs->ArrayUtils.firstSomeBy(((attrName, _)) =>
+        let extraAttr = attrs->Utils.Array.firstSomeBy(((attrName, _)) =>
           if attributes->Array.some(attr => attr.name == attrName) {
             None
           } else {
@@ -366,6 +332,34 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       }
 
     | None => Error(`undeclared struct "${name}"`)
+    }
+  | CoreArrayExpr(tau, init) => {
+      let elemTy = Context.freshTyVar()
+      let sig1 = switch init {
+      | CoreAst.ArrayInitRepeat(x, _) => collectCoreExprTypeSubstsWith(env, x, elemTy)
+      | CoreAst.ArrayInitList(elems) => {
+          let res = elems->Array.reduce(Ok((Subst.empty, env)), (prev, elemN) => {
+            prev->flatMap(((sigN, gammaN)) => {
+              collectCoreExprTypeSubstsWith(gammaN, elemN, elemTy)->flatMap(sig => {
+                let nextSig = substCompose(sig, sigN)
+                let nextGamma = substEnv(sig, gammaN)
+
+                Ok((nextSig, nextGamma))
+              })
+            })
+          })
+
+          res->map(((sig, _)) => sig)
+        }
+      }
+
+      let len = init->CoreAst.ArrayInit.len
+
+      sig1->flatMap(sig1 => {
+        unify(tau, arrayTy(elemTy, len))->map(sig2 => {
+          substCompose(sig2, sig1)
+        })
+      })
     }
   | CoreAttributeAccessExpr(tau, lhs, attr) =>
     collectCoreExprTypeSubsts(env, lhs)->flatMap(sig1 => {

@@ -141,7 +141,7 @@ let freshIdentifier = (~ty=None, name: string): nameRef => {
 
 let getIdentifier = (name: string): option<nameRef> => {
   context.identifiers
-  ->ArrayUtils.getReverseIndexBy(n => n == name)
+  ->Utils.Array.getReverseIndexBy(n => n == name)
   ->Option.flatMap(index => context.renaming->HashMap.Int.get(index))
 }
 

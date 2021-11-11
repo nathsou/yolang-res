@@ -1,6 +1,6 @@
 open Belt
 
-let peephole = (~maxPasses=3, insts: array<Wasm.Inst.t>) => {
+let peephole = (~maxPasses=100, insts: array<Wasm.Inst.t>) => {
   open Wasm.Inst
 
   let instsCount = ref(insts->Array.length)
@@ -33,10 +33,18 @@ let peephole = (~maxPasses=3, insts: array<Wasm.Inst.t>) => {
     | list{ConstI32(a), ConstI32(b), SubI32, ...tl} => go(list{ConstI32(a - b), ...tl})
     | list{ConstI32(a), ConstI32(b), DivI32Unsigned, ...tl} => go(list{ConstI32(a / b), ...tl})
     | list{ConstI32(a), ConstI32(b), RemI32Unsigned, ...tl} => go(list{ConstI32(mod(a, b)), ...tl})
+    | list{ConstI32(a), ConstI32(b), ShlI32, ...tl} => go(list{ConstI32(lsl(a, b)), ...tl})
+    | list{ConstI32(a), ConstI32(b), ShrI32Unsigned, ...tl} => go(list{ConstI32(lsr(a, b)), ...tl})
     | list{ConstI32(0), EqI32, ...tl} => go(list{EqzI32, ...tl})
     | list{ConstI32(a), ConstI32(b), EqI32, ...tl} => go(list{ConstI32(a == b ? 1 : 0), ...tl})
     | list{ConstI32(a), ConstI32(b), NeI32, ...tl} => go(list{ConstI32(a == b ? 0 : 1), ...tl})
     | list{ConstI32(funcIdx), CallIndirect(_, _), ...tl} => go(list{Call(funcIdx), ...tl})
+    | list{ConstI32(d), DivI32Unsigned, ...tl} if Utils.Math.isPowerOf2(d) =>
+      go(list{ConstI32(Float.toInt(Js.Math.log2(Int.toFloat(d)))), ShrI32Unsigned, ...tl})
+    | list{ConstI32(m), MulI32, ...tl} if Utils.Math.isPowerOf2(m) =>
+      go(list{ConstI32(Float.toInt(Js.Math.log2(Int.toFloat(m)))), ShlI32, ...tl})
+    | list{ConstI32(0), ShrI32Unsigned, ...tl} => go(tl)
+    | list{ConstI32(0), ShlI32, ...tl} => go(tl)
     | list{h, ...tl} => aux(tl, list{h, ...acc}, maxPassesLeft)
     | list{} => {
         let opt = acc->List.reverse

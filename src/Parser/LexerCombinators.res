@@ -92,16 +92,17 @@ let alt = (la: lexer<'a>, lb: lexer<'a>): lexer<'a> => {
 }
 
 let anyOf = (ls: array<lexer<'a>>): lexer<'a> => {
-  input => ls->ArrayUtils.firstSomeBy(lexer => lexer(input))
+  input => ls->Utils.Array.firstSomeBy(lexer => lexer(input))
 }
 
 let string = str => {
   seq(str->Js.String.castToArrayLike->Js.Array.fromMap(c => char(c->String.get(0))))->map(_ => str)
 }
 
-let different = (l: lexer<'a>): lexer<()> => {
-  input => switch l(input) {
+let different = (l: lexer<'a>): lexer<unit> => {
+  input =>
+    switch l(input) {
     | Some(_) => None
     | None => Some(((), input->Slice.tail))
-  }
+    }
 }

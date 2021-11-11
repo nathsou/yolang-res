@@ -145,7 +145,7 @@ let alt = (pa: parser<'a>, pb: parser<'a>): parser<'a> => {
 }
 
 let anyOf = (ps: array<parser<'a>>): parser<'a> => {
-  ref(tokens => ps->ArrayUtils.firstSomeBy(p => p.contents(tokens)))
+  ref(tokens => ps->Utils.Array.firstSomeBy(p => p.contents(tokens)))
 }
 
 let leftAssoc = (left: parser<'a>, right: parser<'b>, combine: ('a, 'b) => 'c): parser<'c> => {
@@ -157,6 +157,8 @@ let chainLeft = (p: parser<'a>, op: parser<'b>, combine: ('a, 'b, 'a) => 'c): pa
 }
 
 let parens = p => seq3(token(Symbol(Lparen)), p, token(Symbol(Rparen)))->map(((_, a, _)) => a)
+let sqBrackets = p =>
+  seq3(token(Symbol(LSqBracket)), p, token(Symbol(RSqBracket)))->map(((_, a, _)) => a)
 
 let sepBy = (p, sep) => {
   let rec aux = (tokens, acc) => {

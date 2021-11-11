@@ -62,7 +62,7 @@ let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
               )
             }
           })
-          ->ArrayUtils.mapResult(x => x)
+          ->Utils.Array.mapResult(x => x)
           ->Result.flatMap(newEqs => {
             let missingAttrs = TyStruct(
               PartialStruct(

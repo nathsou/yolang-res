@@ -3,7 +3,9 @@ open Types
 
 module CoreAst = {
   open Ast
-  type rec expr =
+
+  type rec arrayInit = ArrayInitRepeat(expr, int) | ArrayInitList(array<expr>)
+  and expr =
     | CoreConstExpr(Const.t)
     | CoreBinOpExpr(monoTy, expr, BinOp.t, expr)
     | CoreUnaryOpExpr(monoTy, UnaryOp.t, expr)
@@ -20,6 +22,7 @@ module CoreAst = {
     | CoreTypeAssertionExpr(expr, Types.monoTy, Types.monoTy)
     | CoreTupleExpr(array<expr>)
     | CoreStructExpr(string, array<(string, expr)>)
+    | CoreArrayExpr(monoTy, arrayInit)
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
   and stmt = CoreExprStmt(expr)
   and decl =
@@ -56,8 +59,19 @@ module CoreAst = {
     | CoreTypeAssertionExpr(_, _, assertedTy) => assertedTy
     | CoreTupleExpr(exprs) => Types.tupleTy(exprs->Array.map(typeOfExpr))
     | CoreStructExpr(name, _) => TyStruct(NamedStruct(name))
+    | CoreArrayExpr(tau, _) => tau
     | CoreAttributeAccessExpr(tau, _, _) => tau
     }
+  }
+
+  module ArrayInit = {
+    type t = arrayInit
+
+    let len = (init: t): int =>
+      switch init {
+      | ArrayInitRepeat(_, len) => len
+      | ArrayInitList(elems) => Array.length(elems)
+      }
   }
 
   let typeOfStmt = (stmt: stmt): monoTy => {
@@ -121,6 +135,14 @@ module CoreAst = {
       name ++
       " {\n" ++
       attrs->Array.joinWith(",\n", ((attr, val)) => attr ++ ": " ++ showExpr(val)) ++ "\n}"
+    | CoreArrayExpr(tau, init) =>
+      withType(
+        tau,
+        switch init {
+        | ArrayInitRepeat(x, len) => `[${showExpr(x)}; ${Int.toString(len)}]`
+        | ArrayInitList(elems) => `[${elems->Array.joinWith(", ", e => showExpr(e))}]`
+        },
+      )
     | CoreAttributeAccessExpr(tau, lhs, attr) => withType(tau, showExpr(lhs) ++ "." ++ attr)
     }
   }
@@ -258,6 +280,15 @@ module CoreAst = {
     | TupleExpr(exprs) => CoreTupleExpr(exprs->Array.map(fromExpr))
     | StructExpr(name, attrs) =>
       CoreStructExpr(name, attrs->Array.map(((attr, val)) => (attr, fromExpr(val))))
+    | ArrayExpr(init) => {
+        let tau = Context.freshTyVar()
+        let coreInit = switch init {
+        | Ast.ArrayInitRepeat(x, len) => ArrayInitRepeat(fromExpr(x), len)
+        | Ast.ArrayInitList(elems) => ArrayInitList(elems->Array.map(fromExpr))
+        }
+
+        CoreArrayExpr(tau, coreInit)
+      }
     | AttributeAccessExpr(lhs, attr) =>
       CoreAttributeAccessExpr(Context.freshTyVar(), fromExpr(lhs), attr)
     }
@@ -334,7 +365,7 @@ module CoreAst = {
             attributes
             ->Array.keep(({impl}) => impl->Option.isNone)
             ->Array.map(({name: attrName}) => attrs->Array.getBy(((name, _)) => name == attrName))
-            ->ArrayUtils.mapOption(((attrName, val)) => (attrName, go(val)))
+            ->Utils.Array.mapOption(((attrName, val)) => (attrName, go(val)))
 
           switch res {
           | Some(attrs) => CoreStructExpr(name, attrs)
@@ -342,6 +373,14 @@ module CoreAst = {
           }
         }
       | None => Js.Exn.raiseError(`unreachable: undeclared struct "${name}'`)
+      }
+    | CoreArrayExpr(tau, init) => {
+        let substInit = switch init {
+        | ArrayInitRepeat(x, len) => ArrayInitRepeat(go(x), len)
+        | ArrayInitList(elems) => ArrayInitList(elems->Array.map(go))
+        }
+
+        CoreArrayExpr(subst(tau), substInit)
       }
     | CoreAttributeAccessExpr(tau, lhs, attr) => CoreAttributeAccessExpr(subst(tau), go(lhs), attr)
     }
