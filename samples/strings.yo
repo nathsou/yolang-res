@@ -1,0 +1,20 @@
+
+struct Slice {
+  start: Ptr<u8>,
+  len: u32,
+}
+
+extern fn printString(start: Ptr<u8>, len: u32) -> ();
+
+fn print(slice) {
+  printString(slice.start, slice.len);
+}
+
+fn main() {
+  let hello = Slice {
+    start: [104u8, 101u8, 108u8, 108u8, 111u8] as Ptr<u8>,
+    len: 5,
+  };
+
+  print(hello);
+}

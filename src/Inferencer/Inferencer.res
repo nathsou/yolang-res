@@ -6,6 +6,7 @@ open Unification
 
 let constTy = (c: Ast.Const.t): polyTy => {
   let ty = switch c {
+  | Ast.Const.U8Const(_) => u8Ty
   | Ast.Const.U32Const(_) => u32Ty
   | Ast.Const.BoolConst(_) => boolTy
   | Ast.Const.UnitConst => unitTy
@@ -52,7 +53,7 @@ let funcRetTyStack: MutableStack.t<monoTy> = MutableStack.make()
 
 let rec collectFuncTypeSubstsWith = (
   env: Env.t,
-  args: array<Context.nameRef>,
+  args: array<Name.nameRef>,
   body,
   tau,
   funcName: option<string>,
@@ -280,7 +281,7 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       )
     | None => Error("'return' used outside of a function")
     }
-  | CoreTypeAssertionExpr(expr, originalTy, _) =>
+  | CoreTypeAssertionExpr(expr, originalTy, _assertedTy) =>
     collectCoreExprTypeSubstsWith(env, expr, originalTy)
   | CoreTupleExpr(exprs) => {
       let res = exprs->Array.reduce(Ok((Subst.empty, env)), (prev, exprN) => {
@@ -340,7 +341,8 @@ and collectCoreExprTypeSubsts = (env: Env.t, expr: CoreExpr.t): result<Subst.t, 
       | CoreAst.ArrayInitList(elems) => {
           let res = elems->Array.reduce(Ok((Subst.empty, env)), (prev, elemN) => {
             prev->flatMap(((sigN, gammaN)) => {
-              collectCoreExprTypeSubstsWith(gammaN, elemN, elemTy)->flatMap(sig => {
+              let sigNElemTy = substMono(sigN, elemTy)
+              collectCoreExprTypeSubstsWith(gammaN, elemN, sigNElemTy)->flatMap(sig => {
                 let nextSig = substCompose(sig, sigN)
                 let nextGamma = substEnv(sig, gammaN)
 
@@ -510,7 +512,7 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
 
           let (gamma, args) = if isMethod {
             // add the method to the struct's signature
-            struct->Context.Struct.addImplementation(f, isSelfMutable)
+            struct->Struct.addImplementation(f, isSelfMutable)
 
             // remove the first (self) argument
             let remainingArgs = args == [] ? [] : args->Array.sliceToEnd(1)
@@ -529,7 +531,7 @@ let rec registerDecl = (env, decl: CoreDecl.t): result<(Env.t, Subst.t), string>
             (gammaSelf, remainingArgs)
           } else {
             // static function
-            struct->Context.Struct.addStaticFunc(f)
+            struct->Struct.addStaticFunc(f)
 
             (env, args)
           }

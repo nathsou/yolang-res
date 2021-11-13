@@ -88,7 +88,7 @@ let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
             list{
               (
                 TyStruct(PartialStruct(attrs)),
-                s->Context.Struct.toPartialStructType(Context.freshTyVarIndex()),
+                s->Struct.toPartialStructType(Context.freshTyVarIndex()),
               ),
               ...eqs,
             },
@@ -107,7 +107,7 @@ let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
             list{
               (
                 TyStruct(PartialStruct(attrs)),
-                struct->Context.Struct.toPartialStructType(Context.freshTyVarIndex()),
+                struct->Struct.toPartialStructType(Context.freshTyVarIndex()),
               ),
               ...eqs,
             },
@@ -130,3 +130,5 @@ let rec unifyMany = (eqs: list<(monoTy, monoTy)>, subst) => {
 }
 
 let unify = (s, t) => unifyMany(list{(s, t)}, Map.Int.empty)
+
+let unifiable = (s, t) => unify(s, t)->Result.isOk

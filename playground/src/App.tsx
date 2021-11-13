@@ -6,16 +6,25 @@ import { samples } from './samples';
 
 const runModule = async (bytes: Uint8Array): Promise<string> => {
   const module = await WebAssembly.compile(bytes);
+  const decoder = new TextDecoder();
   const instance = await WebAssembly.instantiate(module, {
     index: {
       log: console.log,
-      expectEqual: (a: any, b: any) => {
+      expectEqual(a: any, b: any) {
         if (a !== b) {
           throw new Error(`[expectEqual] expected ${a}, got: ${b}`);
         }
       },
-    }
+      printString(ptr: number, len: number) {
+        const mem = instance.exports.memory as WebAssembly.Memory;
+        const byteView = new Uint8Array(mem.buffer);
+        const str = decoder.decode(byteView.subarray(ptr, ptr + len));
+        console.log(str);
+      },
+    },
   });
+
+  console.log(instance.exports);
 
   if ('main' in instance.exports) {
     console.time('run');

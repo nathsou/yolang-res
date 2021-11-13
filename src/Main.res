@@ -44,15 +44,25 @@ let time = (f: unit => 'a): ('a, float) => {
 
 let runModule = (bytes: Js.Typed_array.Uint8Array.t) => {
   let instanciate: Js.Typed_array.Uint8Array.t => Js.Promise.t<'a> = %raw(`
-    function(bytes) {
+    function (bytes) {
+      const decoder = new TextDecoder();
       return WebAssembly.compile(bytes.buffer)
-        .then(module => new WebAssembly.Instance(module, {
-          index: {
-            log: console.log,
-          }
-        }))
-        .then(instance => instance.exports.main);
-    }
+        .then(module => {
+          const instance = new WebAssembly.Instance(module, {
+            index: {
+              log: console.log,
+              printString(ptr, len) {
+                const mem = instance.exports.memory;
+                const byteView = new Uint8Array(mem.buffer);
+                const str = decoder.decode(byteView.subarray(ptr, ptr + len));
+                console.log(str);
+              },
+            }
+          });
+
+          return instance;
+        }).then(instance => instance.exports.main);
+      }
   `)
 
   let _ = instanciate(bytes)->Js.Promise.then_(

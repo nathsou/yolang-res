@@ -15,7 +15,13 @@ let type_: parser<Types.monoTy> = ref(_ => None)
 
 let int = satBy(t =>
   switch t {
-  | Nat(n) => Some(Ast.ConstExpr(U32Const(n)))
+  | Nat(n, size) =>
+    Some(
+      switch size {
+      | #8 => Ast.ConstExpr(U8Const(n))
+      | #32 => Ast.ConstExpr(U32Const(n))
+      },
+    )
   | _ => None
   }
 )
@@ -55,6 +61,7 @@ let primitiveType = alt(
   unitType,
   satBy(t =>
     switch t {
+    | Identifier("u8") => Some(Types.u8Ty)
     | Identifier("u32") => Some(Types.u32Ty)
     | Identifier("bool") => Some(Types.boolTy)
     | UppercaseIdentifier(name) => Some(Types.TyStruct(Types.NamedStruct(name)))

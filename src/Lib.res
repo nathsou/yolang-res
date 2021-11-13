@@ -59,7 +59,7 @@ module Debug = {
           | Ok((_, subst)) => {
               Context.substIdentifiers(subst)
               let core = coreProg->Array.map(Core.CoreDecl.subst(subst))
-              Ok(core->Array.joinWith("\n\n", core => core->Core.CoreDecl.show))
+              Ok(core->Array.joinWith("\n\n", core => core->Core.CoreDecl.show(~subst=Some(subst))))
             }
           | Error(err) => Error(err)
           }

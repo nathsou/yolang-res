@@ -23,13 +23,13 @@ let getStructExn = (structTy: Types.structTy) => {
   | NamedStruct(name) =>
     switch Context.getStruct(name) {
     | Some(s) => s
-    | None => raise(CompilerExn.UndeclaredStruct(name))
+    | None => raise(Struct.UndeclaredStruct(name))
     }
   | PartialStruct(attrs) =>
     switch attrs->findMatchingStruct {
     | OneMatch(s) => s
-    | NoMatch => raise(CompilerExn.StructTypeNotMatched(Types.TyStruct(structTy)))
-    | MultipleMatches(matches) => raise(CompilerExn.AmibguousStruct(attrs, matches))
+    | NoMatch => raise(Struct.StructTypeNotMatched(Types.TyStruct(structTy)))
+    | MultipleMatches(matches) => raise(Struct.AmibguousStruct(attrs, matches))
     }
   }
 }
@@ -38,6 +38,7 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   open Types
   open Wasm.ValueType
   switch tau {
+  | TyConst("u8", []) => [I32]
   | TyConst("u32", []) => [I32]
   | TyConst("u64", []) => [I64]
   | TyConst("bool", []) => [I32]
@@ -248,9 +249,9 @@ let rec shadowStackSizeOf = (ty: Types.monoTy) =>
     | NamedStruct(name) =>
       switch Context.getStruct(name) {
       | Some({size}) => size
-      | None => raise(CompilerExn.UndeclaredStruct(name))
+      | None => raise(Struct.UndeclaredStruct(name))
       }
-    | PartialStruct(_) => raise(CompilerExn.StructTypeNotMatched(ty))
+    | PartialStruct(_) => raise(Struct.StructTypeNotMatched(ty))
     }
   | TyConst("Tuple", tys) => tys->Array.map(shadowStackSizeOf)->Array.reduce(0, (p, c) => p + c)
   | TyConst("Array", [elemTy, TyConst(len, [])]) =>
@@ -362,7 +363,8 @@ let resolveVar = (self: t, name: string): option<varInfo> => {
 
 let encodeConstExpr = c => {
   switch c {
-  | Ast.Const.U32Const(n) => Some(Wasm.Inst.ConstI32(n))
+  | Ast.Const.U8Const(n) => Some(Wasm.Inst.ConstI32(land(n, 0xff)))
+  | Ast.Const.U32Const(n) => Some(Wasm.Inst.ConstI32(land(n, 0xffffffff)))
   | Ast.Const.BoolConst(b) => Some(Wasm.Inst.ConstI32(b ? 1 : 0))
   | Ast.Const.UnitConst => None
   }
@@ -409,7 +411,7 @@ let getStructAttributeOffset = (self: t, structTy: Types.monoTy, attr: string): 
   }
 }
 
-let freshLambdaName = (self: t): Context.nameRef => {
+let freshLambdaName = (self: t): Name.nameRef => {
   Context.freshIdentifier("$lambda" ++ Int.toString(self.funcs->Array.length))
 }
 
@@ -746,10 +748,12 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
 
       switch (originalTy, assertedTy) {
       | _ if originalTy == assertedTy => ()
+      | (TyConst("u32", []), TyConst("u8", [])) => ()
       | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
       | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
-      // TODO: Remove this conversion
-      | (TyConst("Array", _), TyConst("Ptr", [TyConst("u32", [])])) => ()
+
+      | (TyConst("Array", [arrTy, _]), TyConst("Ptr", [ptrTy]))
+        if Unification.unifiable(arrTy, ptrTy) => ()
       | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
       }
 
@@ -893,8 +897,8 @@ and compileStmt = (self: t, stmt: CoreStmt.t): unit => {
 
 and compileFuncDecl = (
   self: t,
-  f: Context.nameRef,
-  args: array<(Context.nameRef, bool)>,
+  f: Name.nameRef,
+  args: array<(Name.nameRef, bool)>,
   body,
 ): Wasm.Func.index => {
   let args = args->Array.map(((x, mut)) => {
@@ -999,11 +1003,11 @@ and storeInMemory = (self: t, expr, offset: int): int => {
 
   let ty = expr->CoreExpr.typeOf
   switch ty {
-  | Types.TyConst("u32", [])
-  | Types.TyConst("bool", [])
-  | Types.TyConst("Fun", _)
-  | Types.TyConst("Ptr", [_]) =>
-    storeNbytes(4)
+  | Types.TyConst("u8", []) => storeNbytes(1)
+  | Types.TyConst("u32", []) => storeNbytes(4)
+  | Types.TyConst("bool", []) => storeNbytes(4)
+  | Types.TyConst("Fun", _) => storeNbytes(4)
+  | Types.TyConst("Ptr", [_]) => storeNbytes(4)
   | Types.TyConst("()", []) => 0
   | Types.TyStruct(structTy) => {
       let _ = getStructExn(structTy)
@@ -1026,16 +1030,20 @@ let minShadowStackSize = (prog: array<CoreDecl.t>): int => {
     switch expr {
     | CoreAst.CoreStructExpr(_) | CoreAst.CoreArrayExpr(_) => {
         let lhsSize = shadowStackSizeOf(expr->CoreAst.typeOfExpr)
-        let delta = blockDeltas->MutableStack.top->Option.getUnsafe
-        delta.contents = delta.contents + lhsSize
+        switch blockDeltas->MutableStack.top {
+        | Some(delta) => delta.contents = delta.contents + lhsSize
+        | None => blockDeltas->MutableStack.push(ref(lhsSize))
+        }
       }
     | _ => ()
     }
   }
 
   let onExitBlock = _ => {
-    let delta = blockDeltas->MutableStack.top->Option.getUnsafe
-    blockDeltas->MutableStack.push(ref(-delta.contents))
+    switch blockDeltas->MutableStack.top {
+    | Some(delta) => blockDeltas->MutableStack.push(ref(-delta.contents))
+    | None => ()
+    }
   }
 
   CoreAst.visitProg(
@@ -1090,7 +1098,14 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     prog->Array.forEach(self->compileDecl)
 
     // add memory
-    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(64, None)))
+    let wasmPageSize = 64 * 1024
+    let minPagesCount = Int.fromFloat(ceil(float(shadowStackSize) /. float(wasmPageSize))) + 16
+    let _ = self.mod->Wasm.Module.addMemory(Wasm.Memory.make(Wasm.Limits.make(minPagesCount, None)))
+
+    // export memory
+    self.mod->Wasm.Module.addExport(
+      Wasm.ExportEntry.make("memory", Wasm.ExportEntry.ExternalKind.Memory, 0),
+    )
 
     // add globals
     self.globals

@@ -33,6 +33,8 @@ module Symbol = {
     | StarEq
     | DivEq
     | ModEq
+    | SingleQuote
+    | DoubleQuote
 
   let show = s =>
     switch s {
@@ -69,6 +71,8 @@ module Symbol = {
     | StarEq => "*="
     | DivEq => "/="
     | ModEq => "%="
+    | SingleQuote => "'"
+    | DoubleQuote => `"`
     }
 }
 
@@ -93,8 +97,10 @@ module Keywords = {
     }
 }
 
+type intSize = [#8 | #32]
+
 type t =
-  | Nat(int)
+  | Nat(int, intSize)
   | Bool(bool)
   | Symbol(Symbol.t)
   | Identifier(string)
@@ -103,7 +109,7 @@ type t =
 
 let show = token =>
   switch token {
-  | Nat(n) => Belt.Int.toString(n)
+  | Nat(n, _) => Belt.Int.toString(n)
   | Bool(b) => b ? "true" : "false"
   | Symbol(s) => Symbol.show(s)
   | Identifier(name) => name
@@ -113,7 +119,7 @@ let show = token =>
 
 let debug = token => {
   let typ = switch token {
-  | Nat(_) => "nat"
+  | Nat(_, _) => "nat"
   | Bool(_) => "bool"
   | Symbol(_) => "symbol"
   | Identifier(_) => "identifier"

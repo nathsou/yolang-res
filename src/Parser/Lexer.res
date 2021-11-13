@@ -2,10 +2,18 @@ open LexerCombinators
 open Token
 open Belt
 
-let int =
-  some(digit)->map(digits => Nat(
-    Int.fromString(digits->Array.joinWith("", c => String.make(1, c)))->Option.getExn,
-  ))
+let digits =
+  some(digit)->map(digits =>
+    Int.fromString(digits->Array.joinWith("", c => String.make(1, c)))->Option.getExn
+  )
+
+let u8 = digits->then(string("u8"))->map(((n, _)) => Nat(n, #8))
+let u32 = alt(
+  digits->then(string("u32"))->map(((n, _)) => Nat(n, #32)),
+  digits->map(n => Nat(n, #32)),
+)
+
+let int = anyOf([u8, u32])
 
 let bool = alt(string("true")->map(_ => Bool(true)), string("false")->map(_ => Bool(false)))
 
@@ -76,6 +84,8 @@ let symbol = anyOf([
   char('.')->map(_ => Symbol(Dot)),
   char('&')->map(_ => Symbol(Ampersand)),
   char('|')->map(_ => Symbol(Pipe)),
+  char('\'')->map(_ => Symbol(SingleQuote)),
+  char('"')->map(_ => Symbol(DoubleQuote)),
 ])
 
 let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])

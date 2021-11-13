@@ -1203,6 +1203,11 @@ module Module = {
   }
 
   @genType
+  let addExport = (self: t, entry: ExportEntry.t) => {
+    self.exportSection->ExportSection.add(entry)
+  }
+
+  @genType
   let addTable = (self: t, table: Table.t): unit => {
     self.tableSection->TableSection.add(table)
   }

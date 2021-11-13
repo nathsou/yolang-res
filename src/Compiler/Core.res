@@ -9,11 +9,11 @@ module CoreAst = {
     | CoreConstExpr(Const.t)
     | CoreBinOpExpr(monoTy, expr, BinOp.t, expr)
     | CoreUnaryOpExpr(monoTy, UnaryOp.t, expr)
-    | CoreVarExpr(Context.nameRef)
+    | CoreVarExpr(Name.nameRef)
     | CoreAssignmentExpr(expr, expr)
-    | CoreFuncExpr(monoTy, array<Context.nameRef>, expr)
-    | CoreLetInExpr(monoTy, bool, Context.nameRef, expr, expr)
-    | CoreLetRecInExpr(monoTy, Context.nameRef, array<Context.nameRef>, expr, expr)
+    | CoreFuncExpr(monoTy, array<Name.nameRef>, expr)
+    | CoreLetInExpr(monoTy, bool, Name.nameRef, expr, expr)
+    | CoreLetRecInExpr(monoTy, Name.nameRef, array<Name.nameRef>, expr, expr)
     | CoreAppExpr(monoTy, expr, array<expr>)
     | CoreBlockExpr(monoTy, array<stmt>, option<expr>, blockSafety)
     | CoreIfExpr(monoTy, expr, expr, expr)
@@ -26,21 +26,18 @@ module CoreAst = {
     | CoreAttributeAccessExpr(Types.monoTy, expr, string)
   and stmt = CoreExprStmt(expr)
   and decl =
-    | CoreFuncDecl(Context.nameRef, array<(Context.nameRef, bool)>, expr)
-    | CoreGlobalDecl(Context.nameRef, bool, expr)
+    | CoreFuncDecl(Name.nameRef, array<(Name.nameRef, bool)>, expr)
+    | CoreGlobalDecl(Name.nameRef, bool, expr)
     | CoreStructDecl(string, array<(string, Types.monoTy, bool)>)
-    | CoreImplDecl(string, array<(Context.nameRef, array<(Context.nameRef, bool)>, expr)>)
-    | CoreExternFuncDecl({
-        name: Context.nameRef,
-        args: array<(Context.nameRef, bool)>,
-        ret: Types.monoTy,
-      })
+    | CoreImplDecl(string, array<(Name.nameRef, array<(Name.nameRef, bool)>, expr)>)
+    | CoreExternFuncDecl({name: Name.nameRef, args: array<(Name.nameRef, bool)>, ret: Types.monoTy})
 
   let rec typeOfExpr = (expr: expr): monoTy => {
     switch expr {
     | CoreConstExpr(c) =>
       switch c {
       | Const.BoolConst(_) => Types.boolTy
+      | Const.U8Const(_) => Types.u8Ty
       | Const.U32Const(_) => Types.u32Ty
       | Const.UnitConst => Types.unitTy
       }
@@ -121,29 +118,29 @@ module CoreAst = {
         "{\n" ++
         Array.concat(
           stmts->Array.map(showStmt(~subst)),
-          lastExpr->Option.mapWithDefault([], e => [showExpr(e)]),
+          lastExpr->Option.mapWithDefault([], e => [show(e)]),
         )->Array.joinWith(";\n", x => "  " ++ x) ++
         (lastExpr->Option.isNone ? "; " : "") ++ "\n}",
       )
-    | CoreWhileExpr(cond, body) => withType(unitTy, `while ${showExpr(cond)} ${showExpr(body)}`)
+    | CoreWhileExpr(cond, body) => withType(unitTy, `while ${show(cond)} ${show(body)}`)
     | CoreReturnExpr(ret) =>
-      "return " ++ withType(typeOfExpr(expr), ret->Option.mapWithDefault("", showExpr(~subst)))
+      "return " ++ withType(typeOfExpr(expr), ret->Option.mapWithDefault("", show))
     | CoreTypeAssertionExpr(expr, _, assertedTy) =>
-      `${withType(typeOfExpr(expr), showExpr(expr))} as ${Types.showMonoTy(assertedTy)}`
-    | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", showExpr(~subst)) ++ ")"
+      show(expr) ++ " as " ++ Types.showMonoTy(assertedTy)
+    | CoreTupleExpr(exprs) => "(" ++ exprs->Array.joinWith(", ", show) ++ ")"
     | CoreStructExpr(name, attrs) =>
       name ++
       " {\n" ++
-      attrs->Array.joinWith(",\n", ((attr, val)) => attr ++ ": " ++ showExpr(val)) ++ "\n}"
+      attrs->Array.joinWith(",\n", ((attr, val)) => attr ++ ": " ++ show(val)) ++ "\n}"
     | CoreArrayExpr(tau, init) =>
       withType(
         tau,
         switch init {
-        | ArrayInitRepeat(x, len) => `[${showExpr(x)}; ${Int.toString(len)}]`
-        | ArrayInitList(elems) => `[${elems->Array.joinWith(", ", e => showExpr(e))}]`
+        | ArrayInitRepeat(x, len) => `[${show(x)}; ${Int.toString(len)}]`
+        | ArrayInitList(elems) => `[${elems->Array.joinWith(", ", e => show(e))}]`
         },
       )
-    | CoreAttributeAccessExpr(tau, lhs, attr) => withType(tau, showExpr(lhs) ++ "." ++ attr)
+    | CoreAttributeAccessExpr(tau, lhs, attr) => withType(tau, show(lhs) ++ "." ++ attr)
     }
   }
 
@@ -311,7 +308,7 @@ module CoreAst = {
       CoreGlobalDecl(Context.freshIdentifier(x), mut, fromExpr(init))
     | Ast.StructDecl(name, attrs) => {
         // declare this struct
-        Context.declareStruct(Context.Struct.make(name, attrs))
+        Context.declareStruct(Struct.make(name, attrs))
         CoreStructDecl(name, attrs)
       }
     | Ast.ImplDecl(typeName, decls) => {

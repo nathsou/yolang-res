@@ -1,9 +1,11 @@
 
 fn fib(n) {
   let fib_aux = (n, a, b) -> {
-    if n == 0 { return a; }
-    if n == 1 { return b; }
-    fib_aux(n - 1, b, a + b)
+    if n == 0 {
+      a
+    } else {
+      fib_aux(n - 1, b, a + b)
+    }
   };
 
   fib_aux(n, 0, 1)

@@ -34,6 +34,7 @@ module Env = {
   }
 }
 
+let u8Ty = TyConst("u8", [])
 let u32Ty = TyConst("u32", [])
 let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
@@ -53,6 +54,7 @@ let pointerTy = ty => TyConst("Ptr", [ty])
 let isReferencedTy = ty =>
   switch ty {
   | TyStruct(_) => true
+  | TyConst("Array", _) => true
   | _ => false
   }
 
@@ -61,6 +63,7 @@ module Size = {
 
   let rec size = (ty: monoTy) =>
     switch ty {
+    | TyConst("u8", []) => 1
     | TyConst("u32", []) => 4
     | TyConst("u64", []) => 8
     | TyConst("bool", []) => 4
