@@ -34,8 +34,9 @@ let show = exn =>
   | Core.CoreAst.UnexpectedDeclarationInImplBlock(decl) =>
     `unexpected declaration in impl block: ${Core.CoreDecl.show(decl)}`
   | Core.CoreAst.UnreachableLetStmt => "unreachable: let statement found in Core.fromStmt"
-  | e => {
+  | _ =>
+    ParserExn.show(exn, e => {
       Js.log(e)
-      "unexpected compiler exception"
-    }
+      "unhandled compiler exception"
+    })
   }

@@ -63,6 +63,13 @@ let character = satBy(t =>
   }
 )
 
+let string = satBy(t =>
+  switch t {
+  | String(s) => Some(Ast.ConstExpr(StringConst(s)))
+  | _ => None
+  }
+)
+
 let unitType = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Types.unitTy)
 
 let primitiveType = alt(
@@ -73,6 +80,7 @@ let primitiveType = alt(
     | Identifier("u32") => Some(Types.u32Ty)
     | Identifier("bool") => Some(Types.boolTy)
     | Identifier("char") => Some(Types.charTy)
+    | Identifier("str") => Some(Types.stringTy)
     | UppercaseIdentifier(name) => Some(Types.TyStruct(Types.NamedStruct(name)))
     | _ => None
     }
@@ -139,7 +147,7 @@ let tuple = parens(
   Ast.TupleExpr(exprs)
 })
 
-let primary = anyOf([integer, boolean, character, unit, var, tuple, parens(expr)])
+let primary = anyOf([integer, boolean, character, string, unit, var, tuple, parens(expr)])
 
 let attributeAccess = alt(
   leftAssoc(primary, then(token(Symbol(Symbol.Dot)), ident), (

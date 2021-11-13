@@ -54,7 +54,13 @@ module UnaryOp = {
 }
 
 module Const = {
-  type t = U8Const(int) | U32Const(int) | BoolConst(bool) | UnitConst | CharConst(char)
+  type t =
+    | U8Const(int)
+    | U32Const(int)
+    | BoolConst(bool)
+    | UnitConst
+    | CharConst(char)
+    | StringConst(string)
 
   let show = c =>
     switch c {
@@ -63,6 +69,7 @@ module Const = {
     | BoolConst(b) => b ? "true" : "false"
     | UnitConst => "()"
     | CharConst(c) => `'${String.make(1, c)}'`
+    | StringConst(s) => `"${s}"`
     }
 }
 

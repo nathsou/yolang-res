@@ -24,8 +24,6 @@ const runModule = async (bytes: Uint8Array): Promise<string> => {
     },
   });
 
-  console.log(instance.exports);
-
   if ('main' in instance.exports) {
     console.time('run');
     const res = (instance.exports as { main: () => any }).main();

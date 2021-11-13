@@ -43,6 +43,7 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("u64", []) => [I64]
   | TyConst("bool", []) => [I32]
   | TyConst("char", []) => [I32]
+  | TyConst("str", []) => [I32]
   | TyConst("()", []) => []
   | TyConst("Fun", _) => [I32]
   | TyConst("Ptr", _) => [I32]
@@ -203,6 +204,9 @@ type externFuncInfo = {
 
 type compilerOptions = {useBulkMemoryInstructions: bool}
 
+// LINEAR MEMORY
+// STATIC STRINGS | SHADOW STACK (static arrays, static structs) | HEAP
+
 type t = {
   mod: Wasm.Module.t,
   funcs: array<Func.t>,
@@ -214,6 +218,7 @@ type t = {
   blockStack: MutableStack.t<blockInfo>,
   externFuncs: array<externFuncInfo>,
   options: compilerOptions,
+  mutable staticStringsOffset: int,
 }
 
 let getCurrentFuncExn = (self: t): Func.t => {
@@ -369,6 +374,7 @@ let encodeConstExpr = c => {
   | Ast.Const.CharConst(c) => Some(Wasm.Inst.ConstI32(Char.code(c)))
   | Ast.Const.BoolConst(b) => Some(Wasm.Inst.ConstI32(b ? 1 : 0))
   | Ast.Const.UnitConst => None
+  | Ast.Const.StringConst(_) => None // Done separately
   }
 }
 
@@ -439,12 +445,33 @@ let rec findImmutableBinding = (self: t, expr: CoreExpr.t): option<string> => {
   }
 }
 
+let encodeUnicodeString: string => array<int> = %raw(`
+    function(str) {
+      return Array.from(new Uint8Array(new TextEncoder().encode(str).buffer));
+    }
+  `)
+
 let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
   switch expr {
   | CoreConstExpr(c) =>
-    switch c->encodeConstExpr {
-    | Some(inst) => self->emit(inst)
-    | None => ()
+    switch c {
+    | StringConst(s) => {
+        let chars = encodeUnicodeString(s)
+        let ptr = self.staticStringsOffset
+        let _ =
+          self.mod->Wasm.Module.addData(
+            Wasm.Data.Segment.make(chars, Wasm.Data.Mode.Active(0, ptr)),
+          )
+
+        self.staticStringsOffset = ptr + chars->Array.length
+        self->emit(Wasm.Inst.ConstI32(ptr))
+      }
+
+    | _ =>
+      switch c->encodeConstExpr {
+      | Some(inst) => self->emit(inst)
+      | None => ()
+      }
     }
   | CoreUnaryOpExpr(_, op, expr) => {
       open Ast.UnaryOp
@@ -753,9 +780,9 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       | (TyConst("u32", []), TyConst("u8", [])) => ()
       | (TyConst("u32", []), TyConst("Ptr", [_ptr_ty])) => ()
       | (TyConst("Ptr", [TyConst("u32", [])]), TyConst("u32", [])) => ()
-
       | (TyConst("Array", [arrTy, _]), TyConst("Ptr", [ptrTy]))
         if Unification.unifiable(arrTy, ptrTy) => ()
+      | (TyConst("str", []), TyConst("Ptr", [TyConst("char", [])])) => ()
       | _ => raise(CompilerExn.InvalidTypeAssertion(originalTy, assertedTy))
       }
 
@@ -1025,6 +1052,7 @@ and storeInShadowStack = (self: t, expr, offset: int): int => {
 // get the minimum size needed to store structs and arrays in the shadow stack
 let minShadowStackSize = (prog: array<CoreDecl.t>): int => {
   let blockDeltas = MutableStack.make()
+  let staticStringsSize = ref(0)
 
   let onEnterBlock = _ => {
     blockDeltas->MutableStack.push(ref(0))
@@ -1039,6 +1067,9 @@ let minShadowStackSize = (prog: array<CoreDecl.t>): int => {
         | None => blockDeltas->MutableStack.push(ref(lhsSize))
         }
       }
+    | CoreAst.CoreConstExpr(StringConst(s)) =>
+      staticStringsSize.contents =
+        staticStringsSize.contents + encodeUnicodeString(s)->Js.Array2.length
     | _ => ()
     }
   }
@@ -1066,7 +1097,7 @@ let minShadowStackSize = (prog: array<CoreDecl.t>): int => {
     maxStackSize.contents = max(maxStackSize.contents, currentStackSize.contents)
   })
 
-  maxStackSize.contents
+  staticStringsSize.contents + maxStackSize.contents
 }
 
 let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
@@ -1093,6 +1124,7 @@ let compile = (prog: array<CoreDecl.t>): result<Wasm.Module.t, string> => {
     options: {
       useBulkMemoryInstructions: false,
     },
+    staticStringsOffset: 0,
   }
 
   // add the STACK_TOP global

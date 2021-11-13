@@ -9,6 +9,7 @@ import vector from '../../samples/allocator.yo?raw';
 import euler14 from '../../samples/euler-14.yo?raw';
 import euler92 from '../../samples/euler-92.yo?raw';
 import extern from '../../samples/extern.yo?raw';
+import strings from '../../samples/strings.yo?raw';
 
 export const samples = {
   'Prime sieve': sieve,
@@ -22,4 +23,5 @@ export const samples = {
   'External functions': extern,
   'Project Euler 14': euler14,
   'Project Euler 92': euler92,
+  'Strings': strings,
 };

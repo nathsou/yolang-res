@@ -37,6 +37,7 @@ module Env = {
 let u8Ty = TyConst("u8", [])
 let u32Ty = TyConst("u32", [])
 let charTy = TyConst("char", [])
+let stringTy = TyConst("str", [])
 let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])

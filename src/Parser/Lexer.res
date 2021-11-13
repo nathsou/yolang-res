@@ -25,12 +25,24 @@ let identifier =
     String.make(1, h) ++ tl->Array.joinWith("", c => String.make(1, c)),
   ))
 
-let uppercaseIdentifier =
-  some(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(
-    chars->Array.joinWith("", c => String.make(1, c)),
-  ))
+let stringOfChars = chars => chars->Array.joinWith("", c => String.make(1, c))
 
-let character = seq3(char('\''), different(char('\'')), char('\''))->map(((_, c, _)) => Char(c))
+let uppercaseIdentifier =
+  some(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(stringOfChars(chars)))
+
+let character = seq3(char('\''), different(char('\'')), char('\''))->map(((_, c, _)) => {
+  let code = Char.code(c)
+  if code > 0x7f {
+    raise(ParserExn.InvalidCharacter(c))
+  }
+
+  Char(c)
+})
+
+let str =
+  seq3(char('"'), many(different(char('"'))), char('"'))->map(((_, s, _)) => String(
+    stringOfChars(s),
+  ))
 
 let keyword =
   then(
@@ -90,6 +102,15 @@ let symbol = anyOf([
   char('"')->map(_ => Symbol(DoubleQuote)),
 ])
 
-let token = anyOf([integer, boolean, character, keyword, symbol, identifier, uppercaseIdentifier])
+let token = anyOf([
+  integer,
+  boolean,
+  character,
+  str,
+  keyword,
+  symbol,
+  identifier,
+  uppercaseIdentifier,
+])
 
 let lex = many(seq3(spaces, token, spaces)->map(((_, token, _)) => token))
