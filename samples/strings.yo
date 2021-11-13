@@ -1,18 +1,18 @@
 
-struct Slice {
-  start: Ptr<u8>,
+struct Str {
+  start: Ptr<char>,
   len: u32,
 }
 
-extern fn printString(start: Ptr<u8>, len: u32) -> ();
+extern fn printString(start: Ptr<char>, len: u32) -> ();
 
 fn print(slice) {
   printString(slice.start, slice.len);
 }
 
 fn main() {
-  let hello = Slice {
-    start: [104u8, 101u8, 108u8, 108u8, 111u8] as Ptr<u8>,
+  let hello = Str {
+    start: ['h', 'e', 'l', 'l', 'o'] as Ptr<char>,
     len: 5,
   };
 

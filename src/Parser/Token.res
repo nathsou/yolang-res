@@ -102,6 +102,7 @@ type intSize = [#8 | #32]
 type t =
   | Nat(int, intSize)
   | Bool(bool)
+  | Char(char)
   | Symbol(Symbol.t)
   | Identifier(string)
   | UppercaseIdentifier(string)
@@ -111,6 +112,7 @@ let show = token =>
   switch token {
   | Nat(n, _) => Belt.Int.toString(n)
   | Bool(b) => b ? "true" : "false"
+  | Char(c) => String.make(1, c)
   | Symbol(s) => Symbol.show(s)
   | Identifier(name) => name
   | UppercaseIdentifier(name) => name
@@ -121,6 +123,7 @@ let debug = token => {
   let typ = switch token {
   | Nat(_, _) => "nat"
   | Bool(_) => "bool"
+  | Char(_) => "char"
   | Symbol(_) => "symbol"
   | Identifier(_) => "identifier"
   | UppercaseIdentifier(_) => "upperIdent"

@@ -39,6 +39,7 @@ module CoreAst = {
       | Const.BoolConst(_) => Types.boolTy
       | Const.U8Const(_) => Types.u8Ty
       | Const.U32Const(_) => Types.u32Ty
+      | Const.CharConst(_) => Types.charTy
       | Const.UnitConst => Types.unitTy
       }
     | CoreUnaryOpExpr(tau, _, _) => tau

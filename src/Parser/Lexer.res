@@ -13,9 +13,9 @@ let u32 = alt(
   digits->map(n => Nat(n, #32)),
 )
 
-let int = anyOf([u8, u32])
+let integer = anyOf([u8, u32])
 
-let bool = alt(string("true")->map(_ => Bool(true)), string("false")->map(_ => Bool(false)))
+let boolean = alt(string("true")->map(_ => Bool(true)), string("false")->map(_ => Bool(false)))
 
 // [a-z_][a-zA-Z0-9_\']*
 let identifier =
@@ -29,6 +29,8 @@ let uppercaseIdentifier =
   some(anyOf([alphaNum, char('_')]))->map(chars => UppercaseIdentifier(
     chars->Array.joinWith("", c => String.make(1, c)),
   ))
+
+let character = seq3(char('\''), different(char('\'')), char('\''))->map(((_, c, _)) => Char(c))
 
 let keyword =
   then(
@@ -88,6 +90,6 @@ let symbol = anyOf([
   char('"')->map(_ => Symbol(DoubleQuote)),
 ])
 
-let token = anyOf([int, bool, keyword, symbol, identifier, uppercaseIdentifier])
+let token = anyOf([integer, boolean, character, keyword, symbol, identifier, uppercaseIdentifier])
 
 let lex = many(seq3(spaces, token, spaces)->map(((_, token, _)) => token))

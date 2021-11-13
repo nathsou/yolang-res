@@ -99,10 +99,10 @@ let string = str => {
   seq(str->Js.String.castToArrayLike->Js.Array.fromMap(c => char(c->String.get(0))))->map(_ => str)
 }
 
-let different = (l: lexer<'a>): lexer<unit> => {
+let different = (l: lexer<'a>): lexer<'a> => {
   input =>
     switch l(input) {
     | Some(_) => None
-    | None => Some(((), input->Slice.tail))
+    | None => Some((input->Slice.head->Option.getExn, input->Slice.tail))
     }
 }

@@ -13,7 +13,8 @@ let type_: parser<Types.monoTy> = ref(_ => None)
 
 // precedence from highest to lowest
 
-let int = satBy(t =>
+// constant expressions
+let integer = satBy(t =>
   switch t {
   | Nat(n, size) =>
     Some(
@@ -26,7 +27,7 @@ let int = satBy(t =>
   }
 )
 
-let bool = satBy(t =>
+let boolean = satBy(t =>
   switch t {
   | Bool(b) => Some(Ast.ConstExpr(BoolConst(b)))
   | _ => None
@@ -55,6 +56,13 @@ let globalName = satBy(t =>
   }
 )
 
+let character = satBy(t =>
+  switch t {
+  | Char(c) => Some(Ast.ConstExpr(CharConst(c)))
+  | _ => None
+  }
+)
+
 let unitType = then(token(Symbol(Lparen)), token(Symbol(Rparen)))->map(_ => Types.unitTy)
 
 let primitiveType = alt(
@@ -64,6 +72,7 @@ let primitiveType = alt(
     | Identifier("u8") => Some(Types.u8Ty)
     | Identifier("u32") => Some(Types.u32Ty)
     | Identifier("bool") => Some(Types.boolTy)
+    | Identifier("char") => Some(Types.charTy)
     | UppercaseIdentifier(name) => Some(Types.TyStruct(Types.NamedStruct(name)))
     | _ => None
     }
@@ -80,7 +89,7 @@ let extractNat = (expr: Ast.expr): int => {
 }
 
 let arrayType = alt(
-  sqBrackets(seq3(type_, token(Symbol(SemiColon)), int))->map(((ty, _, len)) =>
+  sqBrackets(seq3(type_, token(Symbol(SemiColon)), integer))->map(((ty, _, len)) =>
     Types.arrayTy(ty, extractNat(len))
   ),
   primitiveTypeOrParens,
@@ -130,7 +139,7 @@ let tuple = parens(
   Ast.TupleExpr(exprs)
 })
 
-let primary = anyOf([int, bool, unit, var, tuple, parens(expr)])
+let primary = anyOf([integer, boolean, character, unit, var, tuple, parens(expr)])
 
 let attributeAccess = alt(
   leftAssoc(primary, then(token(Symbol(Symbol.Dot)), ident), (
@@ -278,7 +287,7 @@ block :=
 
 module ArrayInit = {
   let repeatExpr =
-    sqBrackets(seq3(expr, token(Symbol(SemiColon)), int))->map(((x, _, len)) => Ast.ArrayExpr(
+    sqBrackets(seq3(expr, token(Symbol(SemiColon)), integer))->map(((x, _, len)) => Ast.ArrayExpr(
       Ast.ArrayInitRepeat(x, extractNat(len)),
     ))
 

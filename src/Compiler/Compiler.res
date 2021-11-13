@@ -42,6 +42,7 @@ let rec wasmValueTypeOf = (tau: Types.monoTy): array<Wasm.ValueType.t> => {
   | TyConst("u32", []) => [I32]
   | TyConst("u64", []) => [I64]
   | TyConst("bool", []) => [I32]
+  | TyConst("char", []) => [I32]
   | TyConst("()", []) => []
   | TyConst("Fun", _) => [I32]
   | TyConst("Ptr", _) => [I32]
@@ -365,6 +366,7 @@ let encodeConstExpr = c => {
   switch c {
   | Ast.Const.U8Const(n) => Some(Wasm.Inst.ConstI32(land(n, 0xff)))
   | Ast.Const.U32Const(n) => Some(Wasm.Inst.ConstI32(land(n, 0xffffffff)))
+  | Ast.Const.CharConst(c) => Some(Wasm.Inst.ConstI32(Char.code(c)))
   | Ast.Const.BoolConst(b) => Some(Wasm.Inst.ConstI32(b ? 1 : 0))
   | Ast.Const.UnitConst => None
   }
@@ -792,7 +794,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
       let offset = ref(0)
 
       attrs->Array.forEach(((_, expr)) => {
-        let bytes = self->storeInMemory(expr, offset.contents)
+        let bytes = self->storeInShadowStack(expr, offset.contents)
         offset.contents = offset.contents + bytes
       })
     }
@@ -826,7 +828,7 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
           self->emit(Wasm.Inst.GetLocal(addrLocalIndex))
           self->emit(Wasm.Inst.AddI32)
-          let elemSize = self->storeInMemory(expr, 0)
+          let elemSize = self->storeInShadowStack(expr, 0)
           self->emit(Wasm.Inst.GetLocal(addrLocalIndex))
           self->emit(Wasm.Inst.ConstI32(elemSize))
           self->emit(Wasm.Inst.AddI32)
@@ -839,12 +841,13 @@ let rec compileExpr = (self: t, expr: CoreExpr.t): unit => {
           let offset = ref(0)
           elems->Array.forEach(expr => {
             self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
-            let elemSize = self->storeInMemory(expr, offset.contents)
+            let elemSize = self->storeInShadowStack(expr, offset.contents)
             offset.contents = offset.contents + elemSize
           })
         }
       }
 
+      // pointer to the start of the array
       self->emit(Wasm.Inst.GetLocal(arrayAddrLocalIndex))
     }
   | CoreAttributeAccessExpr(_, lhs, attr) =>
@@ -993,7 +996,7 @@ and compileDecl = (self: t, decl: CoreDecl.t): unit => {
   }
 }
 
-and storeInMemory = (self: t, expr, offset: int): int => {
+and storeInShadowStack = (self: t, expr, offset: int): int => {
   let storeNbytes = (n: int) => {
     // TODO: handle alignment
     self->compileExpr(expr)
@@ -1004,6 +1007,7 @@ and storeInMemory = (self: t, expr, offset: int): int => {
   let ty = expr->CoreExpr.typeOf
   switch ty {
   | Types.TyConst("u8", []) => storeNbytes(1)
+  | Types.TyConst("char", []) => storeNbytes(1)
   | Types.TyConst("u32", []) => storeNbytes(4)
   | Types.TyConst("bool", []) => storeNbytes(4)
   | Types.TyConst("Fun", _) => storeNbytes(4)

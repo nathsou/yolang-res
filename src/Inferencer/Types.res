@@ -36,6 +36,7 @@ module Env = {
 
 let u8Ty = TyConst("u8", [])
 let u32Ty = TyConst("u32", [])
+let charTy = TyConst("char", [])
 let u64Ty = TyConst("u64", [])
 let boolTy = TyConst("bool", [])
 let unitTy = TyConst("()", [])
@@ -63,17 +64,18 @@ module Size = {
 
   let rec size = (ty: monoTy) =>
     switch ty {
-    | TyConst("u8", []) => 1
-    | TyConst("u32", []) => 4
-    | TyConst("u64", []) => 8
-    | TyConst("bool", []) => 4
     | TyConst("()", []) => 0 // Zero-sized Type
+    | TyConst("u8", []) => 1
+    | TyConst("char", []) => 1
+    | TyConst("bool", []) => 4
+    | TyConst("u32", []) => 4
     | TyConst("Fun", _) => 4
     | TyConst("Ptr", _) => 4
+    | TyStruct(_) => 4 // structs are references
+    | TyConst("Array", [_elemTy, TyConst(_len, [])]) => 4 // arrays are references
+    | TyConst("u64", []) => 8
     | TyConst("Mut", [ty]) => size(ty)
     | TyConst("Tuple", tys) => tys->Array.map(size)->Array.reduce(0, (p, c) => p + c)
-    | TyConst("Array", [_elemTy, TyConst(_len, [])]) => 4 // arrays are references
-    | TyStruct(_) => 4 // structs are references
     | _ => raise(UnkownTypeSize(ty))
     }
 

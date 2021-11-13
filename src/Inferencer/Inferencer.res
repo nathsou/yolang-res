@@ -9,6 +9,7 @@ let constTy = (c: Ast.Const.t): polyTy => {
   | Ast.Const.U8Const(_) => u8Ty
   | Ast.Const.U32Const(_) => u32Ty
   | Ast.Const.BoolConst(_) => boolTy
+  | Ast.Const.CharConst(_) => charTy
   | Ast.Const.UnitConst => unitTy
   }
 
