@@ -530,7 +530,11 @@ module Func = {
       let locals = Vec.encodeMany(locals->Array.map(Local.encode))
       let instructions = Array.concatMany(instructions->Array.map(Inst.encode))
 
-      Array.concatMany([[locals->Array.length + instructions->Array.length], locals, instructions])
+      Array.concatMany([
+        uleb128(locals->Array.length + instructions->Array.length),
+        locals,
+        instructions,
+      ])
     }
 
     @genType

@@ -1,0 +1,24 @@
+
+struct Str {
+  start: Ptr<char>,
+  len: u32,
+}
+
+extern fn printString(start: Ptr<char>, len: u32) -> ();
+
+mod Console {
+  let yolo = 3;
+
+  fn log(s) {
+    printString(s.start, s.len);
+  }
+}
+
+fn main() {
+  Console.log(Str {
+    start: "hello yolang" as Ptr<char>,
+    len: 12,
+  });
+
+  Console.yolo
+}
