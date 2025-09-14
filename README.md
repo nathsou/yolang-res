@@ -1,6 +1,6 @@
 # Yolang
 
-[Playground](https://nathsou.github.io/yolang/)
+[Playground](https://nathsou.github.io/yolang-res/)
 
 Yo is a simple programming language with syntax similar to Rust which compiles directly to WebAssembly.
 

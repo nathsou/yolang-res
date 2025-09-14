@@ -5,7 +5,7 @@ import { resolve } from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [reactRefresh()],
-  base: '/yolang/',
+  base: '/yolang-res/',
   assetsInclude: ['yo'],
   resolve: {
     alias: {
